@@ -1,0 +1,49 @@
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_COLOR: '1'
+
+jobs:
+  check:
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      UV_LOCKED: '1'
+      UV_NO_PROGRESS: '1'
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          python-version: '3.14'
+          enable-cache: false
+
+      - name: Ruff lint
+        run: uv run --only-group check ruff check
+
+      - name: Ruff format
+        run: uv run --only-group check ruff format --check
+
+      - name: Pyrefly
+        run: uv run --only-group check pyrefly check
+
+      - name: Verify Actions lockfile
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh extension install github/gh-actions-lock --pin v0.5.1
+          gh actions-lock --verify --no-interactive

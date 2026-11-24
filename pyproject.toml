@@ -54,6 +54,12 @@ environment = { PATH = "$HOME/.cargo/bin:$PATH" }
 [tool.cibuildwheel.macos]
 environment = { MACOSX_DEPLOYMENT_TARGET = "11.0" }
 
+[[tool.cibuildwheel.overrides]]
+select = "cp315t-*"
+# TODO: Remove this override once cibuildwheel uses an abi3audit release with abi3t support.
+# https://github.com/pypa/abi3audit/pull/233
+audit-command = ""
+
 [tool.maturin]
 editable-profile = "dev"
 locked = true

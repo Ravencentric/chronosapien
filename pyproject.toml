@@ -1,0 +1,70 @@
+[project]
+name = "chronosapien"
+version = "0.1.0"
+description = "Parse human-readable durations into Python timedelta values and calendar spans."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MPL-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Ravencentric", email = "me@ravencentri.cc" }]
+keywords = ["calendar", "duration", "jiff", "timedelta"]
+classifiers = [
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+  "Programming Language :: Rust",
+  "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Documentation = "https://ravencentri.cc/chronosapien/"
+Repository = "https://github.com/Ravencentric/chronosapien"
+
+[dependency-groups]
+dev = [{ include-group = "docs" }]
+check = [
+  "pyrefly>=1.5",
+  "ruff>=0.17",
+]
+docs = [
+  "griffe>=2.4",
+  "mkdocstrings-python>=2.0",
+  "zensical>=0.1",
+]
+
+[build-system]
+requires = ["maturin>=1.16,<2.0"]
+build-backend = "maturin"
+
+[tool.cibuildwheel]
+build = ["cp311-*", "cp315t-*"]
+archs = "native"
+build-frontend = "build[uv]"
+
+[tool.cibuildwheel.linux]
+before-all = "curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none"
+environment = { PATH = "$HOME/.cargo/bin:$PATH" }
+
+[tool.cibuildwheel.macos]
+environment = { MACOSX_DEPLOYMENT_TARGET = "11.0" }
+
+[tool.maturin]
+editable-profile = "dev"
+locked = true
+
+[tool.ruff.lint.per-file-ignores]
+"chronosapien.pyi" = ["PYI021", "PYI029"]
+
+[tool.uv]
+cache-keys = [
+  { file = "Cargo.toml" },
+  { file = "pyproject.toml" },
+  { file = "src/**/*.rs" },
+]
+exclude-newer = "3 days"

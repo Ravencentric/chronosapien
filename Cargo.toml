@@ -1,0 +1,23 @@
+[package]
+name = "chronosapien"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.100"
+
+[lib]
+name = "chronosapien"
+crate-type = ["cdylib"]
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+
+[dependencies]
+jiff = "1.0.2"
+# Jiff 1.x conversion support has not been released on crates.io yet.
+pyo3 = { git = "https://github.com/PyO3/pyo3.git", rev = "76d3997a3e6b548f48972bc97ded537de14d09b5", features = [
+    "abi3-py311",
+    "abi3t-py315",
+    "jiff",
+] }

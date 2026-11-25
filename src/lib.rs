@@ -26,12 +26,12 @@ mod chronosapien {
     #[pymodule_export]
     #[allow(non_upper_case_globals)]
     const __all__: (&str, &str, &str, &str, &str, &str) = (
-        "CalendarSpan",
         "CalendarUnitError",
         "ChronosapienError",
+        "Duration",
         "InvalidUnitError",
         "SpanParseError",
-        "duration",
+        "to_timedelta",
     );
 
     // With no reference, Jiff's marker preserves 24-hour days and seven-day
@@ -40,39 +40,34 @@ mod chronosapien {
     // https://tc39.es/proposal-temporal/#sec-temporal.duration.prototype.total
     #[pyfunction]
     #[pyo3(signature = (text, /, *, relative_to=None))]
-    fn duration(text: &str, relative_to: Option<&Bound<'_, PyDate>>) -> PyResult<SignedDuration> {
-        let span = text
-            .parse::<Span>()
-            .map_err(|err| SpanParseError::new_err(err.to_string()))?;
-        if relative_to.is_none() && (span.get_years() != 0 || span.get_months() != 0) {
-            return Err(CalendarUnitError::new_err(
-                "duration() requires relative_to for nonzero years or months. Pass a date or datetime.",
-            ));
-        }
-        CalendarSpan { span }.to_timedelta(relative_to)
+    fn to_timedelta(
+        text: &str,
+        relative_to: Option<&Bound<'_, PyDate>>,
+    ) -> PyResult<SignedDuration> {
+        Duration::new(text)?.to_timedelta(relative_to)
     }
 
     #[pyclass(frozen, eq, hash, module = "chronosapien")]
-    struct CalendarSpan {
+    struct Duration {
         span: Span,
     }
 
-    impl PartialEq for CalendarSpan {
+    impl PartialEq for Duration {
         fn eq(&self, other: &Self) -> bool {
             self.span.fieldwise() == other.span.fieldwise()
         }
     }
 
-    impl Eq for CalendarSpan {}
+    impl Eq for Duration {}
 
-    impl Hash for CalendarSpan {
+    impl Hash for Duration {
         fn hash<H: Hasher>(&self, state: &mut H) {
             self.span.fieldwise().hash(state);
         }
     }
 
     #[pymethods]
-    impl CalendarSpan {
+    impl Duration {
         #[new]
         #[pyo3(signature = (text, /))]
         fn new(text: &str) -> PyResult<Self> {
@@ -223,7 +218,7 @@ mod chronosapien {
         }
 
         fn __repr__(&self) -> String {
-            format!("CalendarSpan('{}')", self.to_friendly())
+            format!("Duration('{}')", self.to_friendly())
         }
 
         fn to_friendly(&self) -> String {

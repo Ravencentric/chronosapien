@@ -8,27 +8,27 @@ duration (and duration strings only) strings using [Jiff](https://docs.rs/jiff/l
 ```python
 from datetime import timedelta
 
-from chronosapien import CalendarSpan, duration
+from chronosapien import Duration, to_timedelta
 
-elapsed = duration("2 hours, 30 minutes")
+elapsed = to_timedelta("2 hours, 30 minutes")
 assert elapsed == timedelta(hours=2, minutes=30)
-assert duration("PT2H30M") == elapsed
+assert to_timedelta("PT2H30M") == elapsed
 
-offset = duration("2 hours, 30 minutes ago")
+offset = to_timedelta("2 hours, 30 minutes ago")
 assert offset == -timedelta(hours=2, minutes=30)
 
-span = CalendarSpan("1 month, 2 days, 3 hours")
+span = Duration("1 month, 2 days, 3 hours")
 assert span.months == 1
 assert span.days == 2
 assert span.hours == 3
 
-assert CalendarSpan("1mo, 2 days 3h") == span
-assert CalendarSpan("P1M2DT3H") == span
+assert Duration("1mo, 2 days 3h") == span
+assert Duration("P1M2DT3H") == span
 ```
 
 These inputs come from [Jiff's friendly-format examples](https://docs.rs/jiff/latest/jiff/fmt/friendly/index.html).
 
-| Input                         | `CalendarSpan(text).to_friendly()` |
+| Input                         | `Duration(text).to_friendly()`     |
 |-------------------------------|------------------------------------|
 | `40d` or `40 days`            | `40d`                              |
 | `2h30m`                       | `2h 30m`                           |
@@ -38,8 +38,8 @@ These inputs come from [Jiff's friendly-format examples](https://docs.rs/jiff/la
 | `3 mins 34,123s`              | `3m 34s 123ms`                     |
 | `2 months, 35 days, 02:30:00` | `2mo 35d 2h 30m`                   |
 
-See the API docs for [`duration()`](https://ravencentri.cc/chronosapien/reference/duration/)
-and [`CalendarSpan`](https://ravencentri.cc/chronosapien/reference/calendar-span/).
+See the API docs for [`to_timedelta()`](https://ravencentri.cc/chronosapien/reference/to-timedelta/)
+and [`Duration`](https://ravencentri.cc/chronosapien/reference/duration/).
 
 ## Installation
 

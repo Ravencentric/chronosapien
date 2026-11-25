@@ -4,12 +4,12 @@ from datetime import date, datetime, timedelta
 from typing import Final, Literal, TypeAlias, final
 
 __all__: Final = (
-    "CalendarSpan",
     "CalendarUnitError",
     "ChronosapienError",
+    "Duration",
     "InvalidUnitError",
     "SpanParseError",
-    "duration",
+    "to_timedelta",
 )
 
 SpanUnit: TypeAlias = Literal[
@@ -37,7 +37,7 @@ class InvalidUnitError(ChronosapienError):
 class SpanParseError(ChronosapienError):
     """Invalid span text or a component outside its supported range."""
 
-def duration(text: str, /, *, relative_to: date | None = None) -> timedelta:
+def to_timedelta(text: str, /, *, relative_to: date | None = None) -> timedelta:
     """
     Parse an ISO 8601 or human-readable duration into a `timedelta`.
     For more input examples, see [Jiff's friendly format](https://docs.rs/jiff/latest/jiff/fmt/friendly/index.html).
@@ -68,20 +68,20 @@ def duration(text: str, /, *, relative_to: date | None = None) -> timedelta:
     ```python
     from datetime import date, timedelta
 
-    from chronosapien import duration
+    from chronosapien import to_timedelta
 
     # One day is 24 hours, so adding two hours gives 26.
-    assert duration("1 day 2 hours") == timedelta(hours=26)
+    assert to_timedelta("1 day 2 hours") == timedelta(hours=26)
     # P1DT2H is the ISO 8601 spelling of one day and two hours.
-    assert duration("P1DT2H") == duration("1 day 2 hours")
+    assert to_timedelta("P1DT2H") == to_timedelta("1 day 2 hours")
     # One month starting on February 1 lasts 28 days in 2026.
-    assert duration("1mo", relative_to=date(2026, 2, 1)) == timedelta(days=28)
+    assert to_timedelta("1mo", relative_to=date(2026, 2, 1)) == timedelta(days=28)
     ```
     """
 
 @final
-class CalendarSpan:
-    def __new__(cls, text: str, /) -> CalendarSpan:
+class Duration:
+    def __new__(cls, text: str, /) -> Duration:
         """
         An immutable span of time represented via a mixture of calendar and clock
         units, parsed from an ISO 8601 or human-readable string.
@@ -100,13 +100,13 @@ class CalendarSpan:
         Examples
         --------
         ```python
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
-        span = CalendarSpan("1mo 2d")
+        span = Duration("1mo 2d")
         # Omitted units, such as hours here, read as zero.
         assert (span.months, span.days, span.hours) == (1, 2, 0)
 
-        span = CalendarSpan("90m")
+        span = Duration("90m")
         # The span keeps all 90 minutes in the minutes field.
         assert (span.minutes, span.hours) == (90, 0)
         ```
@@ -141,11 +141,11 @@ class CalendarSpan:
         ```python
         from datetime import date, timedelta
 
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
-        assert CalendarSpan("1d").to_timedelta() == timedelta(hours=24)
+        assert Duration("1d").to_timedelta() == timedelta(hours=24)
 
-        month = CalendarSpan("1mo")
+        month = Duration("1mo")
         # January 1 to February 1 is 31 days.
         assert month.to_timedelta(relative_to=date(2026, 1, 1)).days == 31
         # February 1 to March 1 is 28 days in 2026.
@@ -183,11 +183,11 @@ class CalendarSpan:
         ```python
         from datetime import date
 
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
-        assert CalendarSpan("90m").total("hour") == 1.5
-        assert CalendarSpan("36h").total("day") == 1.5
-        assert CalendarSpan("1mo").total("day", relative_to=date(2026, 2, 1)) == 28.0
+        assert Duration("90m").total("hour") == 1.5
+        assert Duration("36h").total("day") == 1.5
+        assert Duration("1mo").total("day", relative_to=date(2026, 2, 1)) == 28.0
         ```
         """
 
@@ -197,7 +197,7 @@ class CalendarSpan:
         largest: SpanUnit,
         smallest: SpanUnit = "nanosecond",
         relative_to: date | None = None,
-    ) -> CalendarSpan:
+    ) -> Duration:
         """
         Return a new span rounded and balanced between `largest` and `smallest`.
 
@@ -229,16 +229,16 @@ class CalendarSpan:
         Examples
         --------
         ```python
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
-        span = CalendarSpan("119m 31s")
-        assert span.round(largest="hour") == CalendarSpan("1h 59m 31s")
-        assert span.round(largest="hour", smallest="minute") == CalendarSpan("2h")
+        span = Duration("119m 31s")
+        assert span.round(largest="hour") == Duration("1h 59m 31s")
+        assert span.round(largest="hour", smallest="minute") == Duration("2h")
         ```
         """
 
     def equivalent_to(
-        self, other: CalendarSpan, /, *, relative_to: date | None = None
+        self, other: Duration, /, *, relative_to: date | None = None
     ) -> bool:
         """
         Return whether both spans have the same elapsed time at nanosecond precision.
@@ -253,7 +253,7 @@ class CalendarSpan:
         Raises
         ------
         TypeError
-            If `other` is not a `CalendarSpan` or the reference has an unsupported
+            If `other` is not a `Duration` or the reference has an unsupported
             type or `tzinfo`.
         CalendarUnitError
             If either span has nonzero months or years and no reference was supplied.
@@ -266,12 +266,12 @@ class CalendarSpan:
         ```python
         from datetime import date
 
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
-        assert CalendarSpan("1h").equivalent_to(CalendarSpan("60m"))
-        assert CalendarSpan("1w").equivalent_to(CalendarSpan("168h"))
+        assert Duration("1h").equivalent_to(Duration("60m"))
+        assert Duration("1w").equivalent_to(Duration("168h"))
 
-        month, days = CalendarSpan("1mo"), CalendarSpan("28d")
+        month, days = Duration("1mo"), Duration("28d")
         # From February 1, both spans reach March 1.
         assert month.equivalent_to(days, relative_to=date(2026, 2, 1))
         # From January 1, reaching February 1 takes 31 days.
@@ -303,11 +303,11 @@ class CalendarSpan:
         ```python
         from datetime import datetime
 
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
         start = datetime(2026, 1, 31, 9)
         # February 2026 has only 28 days, so the 31st becomes the 28th.
-        assert CalendarSpan("1mo").add_to(start) == datetime(2026, 2, 28, 9)
+        assert Duration("1mo").add_to(start) == datetime(2026, 2, 28, 9)
         ```
         """
 
@@ -335,11 +335,11 @@ class CalendarSpan:
         ```python
         from datetime import datetime
 
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
         start = datetime(2026, 3, 31, 9)
         # Subtracting a month targets February, which ends on the 28th in 2026.
-        assert CalendarSpan("1mo").subtract_from(start) == datetime(2026, 2, 28, 9)
+        assert Duration("1mo").subtract_from(start) == datetime(2026, 2, 28, 9)
         ```
         """
 
@@ -349,9 +349,9 @@ class CalendarSpan:
         Examples
         --------
         ```python
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
-        assert CalendarSpan("0s").is_zero()
+        assert Duration("0s").is_zero()
         ```
         """
 
@@ -361,9 +361,9 @@ class CalendarSpan:
         Examples
         --------
         ```python
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
-        assert CalendarSpan("1mo").is_positive()
+        assert Duration("1mo").is_positive()
         ```
         """
 
@@ -373,37 +373,37 @@ class CalendarSpan:
         Examples
         --------
         ```python
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
-        assert CalendarSpan("-2h").is_negative()
+        assert Duration("-2h").is_negative()
         ```
         """
 
-    def abs(self) -> CalendarSpan:
+    def abs(self) -> Duration:
         """Return the absolute value of the span.
 
         Examples
         --------
         ```python
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
-        assert CalendarSpan("-2h").abs() == CalendarSpan("2h")
+        assert Duration("-2h").abs() == Duration("2h")
         ```
         """
 
-    def negate(self) -> CalendarSpan:
+    def negate(self) -> Duration:
         """Return a span with the opposite sign.
 
         Examples
         --------
         ```python
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
-        assert CalendarSpan("2h").negate() == CalendarSpan("-2h")
+        assert Duration("2h").negate() == Duration("-2h")
         ```
         """
 
-    def scale(self, n: int, /) -> CalendarSpan:
+    def scale(self, n: int, /) -> Duration:
         """Return a new span with each stored unit multiplied by `n`.
 
         Raises
@@ -417,9 +417,9 @@ class CalendarSpan:
         Examples
         --------
         ```python
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
-        scaled = CalendarSpan("50m").scale(2)
+        scaled = Duration("50m").scale(2)
         # Doubling 50 minutes stores 100 in the minutes field.
         assert (scaled.hours, scaled.minutes) == (0, 100)
         ```
@@ -431,9 +431,9 @@ class CalendarSpan:
         Examples
         --------
         ```python
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
-        assert str(CalendarSpan("1mo 2d")) == "P1M2D"
+        assert str(Duration("1mo 2d")) == "P1M2D"
         ```
         """
 
@@ -443,9 +443,9 @@ class CalendarSpan:
         Examples
         --------
         ```python
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
-        assert repr(CalendarSpan("P1M2D")) == "CalendarSpan('1mo 2d')"
+        assert repr(Duration("P1M2D")) == "Duration('1mo 2d')"
         ```
         """
 
@@ -455,9 +455,9 @@ class CalendarSpan:
         Examples
         --------
         ```python
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
-        assert CalendarSpan("P1M2D").to_friendly() == "1mo 2d"
+        assert Duration("P1M2D").to_friendly() == "1mo 2d"
         ```
         """
 
@@ -475,12 +475,12 @@ class CalendarSpan:
         Examples
         --------
         ```python
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
         # Both spellings store one month and two days.
-        assert CalendarSpan("P1M2D") == CalendarSpan("1mo 2d")
+        assert Duration("P1M2D") == Duration("1mo 2d")
         # The first span stores 1 hour, and the second stores 60 minutes.
-        assert CalendarSpan("1h") != CalendarSpan("60m")
+        assert Duration("1h") != Duration("60m")
         ```
         """
 
@@ -490,11 +490,11 @@ class CalendarSpan:
         Examples
         --------
         ```python
-        from chronosapien import CalendarSpan
+        from chronosapien import Duration
 
-        reminders = {CalendarSpan("1mo"): "renew subscription"}
+        reminders = {Duration("1mo"): "renew subscription"}
         # The ISO 8601 spelling P1M produces the same dictionary key.
-        assert reminders[CalendarSpan("P1M")] == "renew subscription"
+        assert reminders[Duration("P1M")] == "renew subscription"
         ```
         """
 

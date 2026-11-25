@@ -9,9 +9,9 @@ repo_name = "Ravencentric/chronosapien"
 nav = [
   "index.md",
   { "API Reference" = [
-    { "duration()" = "reference/duration.md" },
-    { "CalendarSpan" = "reference/calendar-span.md" },
-    "reference/exceptions.md",
+    { "to_timedelta()" = "reference/to-timedelta.md" },
+    { "Duration" = "reference/duration.md" },
+    {"Exceptions" = "reference/exceptions.md"},
   ] },
 ]
 copyright = """

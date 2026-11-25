@@ -314,6 +314,89 @@ class Duration:
         ```
         """
 
+    def plus(self, other: Duration, /, *, relative_to: date | None = None) -> Duration:
+        """
+        Add two spans and return a new, balanced `Duration`.
+
+        With `relative_to`, apply this span first and then `other`. The result
+        describes the difference between the reference and the final time.
+        The order of the spans can affect the result around month ends or
+        offset transitions.
+
+        Supply `relative_to` when either span has nonzero months or years.
+        Without a reference, a day is 24 hours and a week is seven days.
+        The reference can be a `date` or a `datetime`. A `datetime` can be
+        naive or use `datetime.timezone` or a named `zoneinfo.ZoneInfo`.
+        Named zones account for offset transitions. Fractional seconds in
+        fixed offsets are truncated toward zero.
+
+        Raises
+        ------
+        TypeError
+            If `other` is not a `Duration` or the reference has an unsupported
+            type or `tzinfo`.
+        CalendarUnitError
+            If either span has nonzero months or years and no reference was supplied.
+        ValueError
+            If the `ZoneInfo` key is missing or unrecognized, or the arithmetic
+            exceeds the supported range.
+
+        Examples
+        --------
+        ```python
+        from datetime import datetime
+
+        from chronosapien import Duration
+
+        assert Duration("1h").plus(Duration("90m")) == Duration("2h 30m")
+
+        start = datetime(2025, 1, 30)
+        month, days = Duration("1mo"), Duration("2d")
+        assert month.plus(days, relative_to=start).add_to(start) == datetime(2025, 3, 2)
+        assert days.plus(month, relative_to=start).add_to(start) == datetime(2025, 3, 1)
+        ```
+        """
+
+    def minus(self, other: Duration, /, *, relative_to: date | None = None) -> Duration:
+        """
+        Subtract `other` from this span and return a new, balanced `Duration`.
+
+        With `relative_to`, apply this span first and then the negation of
+        `other`. The result describes the difference between the reference
+        and the final time.
+
+        Supply `relative_to` when either span has nonzero months or years.
+        Without a reference, a day is 24 hours and a week is seven days.
+        The reference can be a `date` or a `datetime`. A `datetime` can be
+        naive or use `datetime.timezone` or a named `zoneinfo.ZoneInfo`.
+        Named zones account for offset transitions. Fractional seconds in
+        fixed offsets are truncated toward zero.
+
+        Raises
+        ------
+        TypeError
+            If `other` is not a `Duration` or the reference has an unsupported
+            type or `tzinfo`.
+        CalendarUnitError
+            If either span has nonzero months or years and no reference was supplied.
+        ValueError
+            If the `ZoneInfo` key is missing or unrecognized, or the arithmetic
+            exceeds the supported range.
+
+        Examples
+        --------
+        ```python
+        from datetime import date
+
+        from chronosapien import Duration
+
+        assert Duration("1h").minus(Duration("90m")) == Duration("-30m")
+
+        month, days = Duration("1mo"), Duration("28d")
+        assert month.minus(days, relative_to=date(2025, 2, 1)).is_zero()
+        ```
+        """
+
     def add_to(self, start: datetime) -> datetime:
         """
         Add the span to a `datetime` and return the resulting `datetime`.

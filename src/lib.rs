@@ -16,7 +16,9 @@ mod chronosapien {
 
     use jiff::civil::{Date, DateTime};
     use jiff::fmt::friendly::{Designator, Direction, FractionalUnit, Spacing, SpanPrinter};
-    use jiff::{SignedDuration, Span, SpanRelativeTo, SpanRound, Unit, ZonedDateTime};
+    use jiff::{
+        SignedDuration, Span, SpanArithmetic, SpanRelativeTo, SpanRound, Unit, ZonedDateTime,
+    };
     use pyo3::exceptions::{PyOverflowError, PyTypeError, PyValueError};
     use pyo3::prelude::*;
     use pyo3::sync::PyOnceLock;
@@ -69,6 +71,30 @@ mod chronosapien {
     impl Hash for Duration {
         fn hash<H: Hasher>(&self, state: &mut H) {
             self.span.fieldwise().hash(state);
+        }
+    }
+
+    impl Duration {
+        fn span_arithmetic(
+            &self,
+            other: &Self,
+            relative_to: Option<&Bound<'_, PyDate>>,
+            operation: impl FnOnce(SpanArithmetic<'_>) -> Result<Span, jiff::Error>,
+        ) -> PyResult<Self> {
+            let span = if relative_to.is_some() {
+                with_span_reference(relative_to, |reference| {
+                    operation((other.span, reference).into())
+                })?
+            } else {
+                if [self, other]
+                    .into_iter()
+                    .any(|duration| duration.years() != 0 || duration.months() != 0)
+                {
+                    return Err(missing_span_reference());
+                }
+                operation(SpanArithmetic::from(other.span).days_are_24_hours())?
+            };
+            Ok(Self { span })
         }
     }
 
@@ -167,6 +193,16 @@ mod chronosapien {
                     .compare((other.span, reference))
                     .map(std::cmp::Ordering::is_eq)
             })
+        }
+
+        #[pyo3(signature = (other, /, *, relative_to=None))]
+        fn plus(&self, other: &Self, relative_to: Option<&Bound<'_, PyDate>>) -> PyResult<Self> {
+            self.span_arithmetic(other, relative_to, |options| self.span.checked_add(options))
+        }
+
+        #[pyo3(signature = (other, /, *, relative_to=None))]
+        fn minus(&self, other: &Self, relative_to: Option<&Bound<'_, PyDate>>) -> PyResult<Self> {
+            self.span_arithmetic(other, relative_to, |options| self.span.checked_sub(options))
         }
 
         fn add_to<'py>(&self, start: &Bound<'py, PyDateTime>) -> PyResult<Bound<'py, PyDateTime>> {

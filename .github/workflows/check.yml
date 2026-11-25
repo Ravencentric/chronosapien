@@ -33,13 +33,13 @@ jobs:
           enable-cache: false
 
       - name: Ruff lint
-        run: uv run --only-group check ruff check
+        run: uv run ruff check
 
       - name: Ruff format
-        run: uv run --only-group check ruff format --check
+        run: uv run ruff format --check
 
       - name: Pyrefly
-        run: uv run --only-group check pyrefly check
+        run: uv run pyrefly check
 
       - name: Verify Actions lockfile
         env:

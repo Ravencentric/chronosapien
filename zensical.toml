@@ -11,6 +11,7 @@ nav = [
   { "API Reference" = [
     { "to_timedelta()" = "reference/to-timedelta.md" },
     { "Duration" = "reference/duration.md" },
+    { "DurationFormatter" = "reference/duration-formatter.md" },
     {"Exceptions" = "reference/exceptions.md"},
   ] },
 ]

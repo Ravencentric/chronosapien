@@ -7,6 +7,8 @@ __all__: Final = (
     "CalendarUnitError",
     "ChronosapienError",
     "Duration",
+    "DurationFormatError",
+    "DurationFormatter",
     "InvalidUnitError",
     "SpanParseError",
     "to_timedelta",
@@ -25,11 +27,19 @@ SpanUnit: TypeAlias = Literal[
     "nanosecond",
 ]
 
+PrecisionLiteral: TypeAlias = Literal[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+PaddingLiteral: TypeAlias = Literal[
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+]
+
 class ChronosapienError(Exception):
     """Base class for Chronosapien's custom exceptions."""
 
 class CalendarUnitError(ChronosapienError):
     """A year or month requires a reference date and none was supplied."""
+
+class DurationFormatError(ChronosapienError):
+    """An unknown, incompatible, or out-of-range duration formatting option."""
 
 class InvalidUnitError(ChronosapienError):
     """An unknown unit name or invalid ordering of rounding units."""
@@ -109,6 +119,36 @@ class Duration:
         span = Duration("90m")
         # The span keeps all 90 minutes in the minutes field.
         assert (span.minutes, span.hours) == (90, 0)
+        ```
+        """
+
+    @staticmethod
+    def from_timedelta(delta: timedelta, /) -> Duration:
+        """
+        Build a duration from the fixed elapsed time in a `timedelta`.
+
+        The result stores whole seconds and subsecond units. Each day in the
+        `timedelta` becomes 86,400 seconds, including when the resulting duration
+        is applied across a time zone offset change.
+
+        Raises
+        ------
+        TypeError
+            If `delta` is not a `timedelta`.
+        OverflowError
+            If `delta` is outside the supported range for a `Duration`.
+
+        Examples
+        --------
+        ```python
+        from datetime import timedelta
+
+        from chronosapien import Duration
+
+        day = timedelta(days=1)
+        duration = Duration.from_timedelta(day)
+        assert duration == Duration("86400s")
+        assert duration.to_timedelta() == day
         ```
         """
 
@@ -449,8 +489,66 @@ class Duration:
         ```
         """
 
-    def to_friendly(self) -> str:
-        """Return a human-readable duration string that preserves the stored units.
+    def to_friendly(
+        self,
+        *,
+        designator: Literal["compact", "short", "verbose"] = "compact",
+        spacing: Literal["auto", "none", "units", "designators"] = "auto",
+        comma: bool | None = None,
+        direction: Literal["auto", "sign", "suffix"] = "auto",
+        hhmmss: bool = False,
+        fractional: Literal["hour", "minute", "second", "millisecond", "microsecond"]
+        | None = None,
+        precision: PrecisionLiteral | None = None,
+        padding: PaddingLiteral | None = None,
+    ) -> str:
+        """Return a human-readable duration string.
+
+        `designator` selects the unit labels, such as `1y` for `"compact"`,
+        `1yr` for `"short"`, and `1 year` for `"verbose"`.
+
+        `spacing` controls where spaces appear. `"none"` gives `1h30m`,
+        `"units"` gives `1h 30m`, and `"designators"` gives `1 h 30 m`.
+        With `spacing="auto"`, verbose output uses `"designators"` and the
+        other designators use `"units"`. `comma` controls comma separators
+        independently and defaults to using them only for verbose output.
+
+        `direction` controls how the sign is displayed. `"sign"` writes a
+        leading minus on negative durations, and `"suffix"` writes `ago`
+        after negative durations. The default, `"auto"`, uses a leading minus with
+        `spacing="none"` or with `hhmmss=True` and no calendar units. It
+        uses `ago` for other negative durations.
+
+        `hhmmss=True` displays hours, minutes, and seconds as `HH:MM:SS`.
+        Days and larger units use the selected designator. A space separates
+        those units from the time even with `spacing="none"`. Minutes and
+        seconds can exceed 59. Subsecond units are folded into seconds with
+        nanosecond precision by default.
+
+        `fractional` folds smaller units into a decimal, such as `1.5h` for
+        `1h 30m` with `fractional="hour"`. Fractional hours and minutes can
+        lose precision even with automatic precision. `hhmmss=True` always
+        uses fractional seconds.
+
+        `precision` sets the number of decimal places from 0 to 9 when
+        fractional output is enabled. `None` uses as many places as the
+        value needs, up to 9. An explicit precision truncates excess digits.
+        `padding` sets the minimum width of the integer part of each unit
+        from 0 to 20, adding leading zeros as needed. With `padding=None`,
+        the `HH:MM:SS` fields use a width of 2 and other fields have no padding.
+
+        To reuse these options across durations, use
+        [`DurationFormatter`][chronosapien.DurationFormatter].
+
+        Raises
+        ------
+        TypeError
+            If an argument has the wrong type.
+        DurationFormatError
+            If `designator`, `spacing`, `direction`, or `fractional` has an
+            unknown value, if `hhmmss=True` is combined with a fractional
+            unit other than seconds, or if `precision` or `padding` is out
+            of range.
 
         Examples
         --------
@@ -458,6 +556,14 @@ class Duration:
         from chronosapien import Duration
 
         assert Duration("P1M2D").to_friendly() == "1mo 2d"
+        assert Duration("1y 2mo").to_friendly(designator="short") == "1yr 2mos"
+        assert Duration("1h 30m").to_friendly(designator="verbose") == "1 hour, 30 minutes"
+        assert Duration("1h 30m").to_friendly(spacing="designators") == "1 h 30 m"
+        assert Duration("-1h").to_friendly(direction="sign") == "-1h"
+        text = Duration("1d 120m").to_friendly(hhmmss=True)
+        assert text == "1d 00:120:00"
+        assert Duration("1h 30m").to_friendly(fractional="hour") == "1.5h"
+        assert Duration("1250ms").to_friendly(hhmmss=True, precision=3) == "00:00:01.250"
         ```
         """
 
@@ -537,3 +643,46 @@ class Duration:
     @property
     def nanoseconds(self) -> int:
         """The stored number of nanoseconds."""
+
+@final
+class DurationFormatter:
+    """An immutable formatter that stores settings for human-readable durations.
+
+    Examples
+    --------
+    ```python
+    from chronosapien import Duration, DurationFormatter
+
+    formatter = DurationFormatter(hhmmss=True, precision=3)
+    duration = Duration("1250ms")
+
+    assert formatter.format(duration) == "00:00:01.250"
+    assert formatter.format(Duration("1h 30m")) == "01:30:00.000"
+    ```
+    """
+
+    def __new__(
+        cls,
+        *,
+        designator: Literal["compact", "short", "verbose"] = "compact",
+        spacing: Literal["auto", "none", "units", "designators"] = "auto",
+        comma: bool | None = None,
+        direction: Literal["auto", "sign", "suffix"] = "auto",
+        hhmmss: bool = False,
+        fractional: Literal["hour", "minute", "second", "millisecond", "microsecond"]
+        | None = None,
+        precision: PrecisionLiteral | None = None,
+        padding: PaddingLiteral | None = None,
+    ) -> DurationFormatter:
+        """Validate and store the options described in
+        [`Duration.to_friendly()`][chronosapien.Duration.to_friendly].
+
+        Raises
+        ------
+        DurationFormatError
+            If a formatting option is unknown, out of range, or incompatible
+            with another option.
+        """
+
+    def format(self, duration: Duration, /) -> str:
+        """Format a duration using the stored settings."""

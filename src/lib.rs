@@ -7,6 +7,7 @@ pyo3::create_exception!(
 );
 pyo3::create_exception!(chronosapien, SpanParseError, ChronosapienError);
 pyo3::create_exception!(chronosapien, CalendarUnitError, ChronosapienError);
+pyo3::create_exception!(chronosapien, DurationFormatError, ChronosapienError);
 pyo3::create_exception!(chronosapien, InvalidUnitError, ChronosapienError);
 
 #[pymodule]
@@ -14,6 +15,7 @@ mod chronosapien {
     use std::hash::{Hash, Hasher};
 
     use jiff::civil::{Date, DateTime};
+    use jiff::fmt::friendly::{Designator, Direction, FractionalUnit, Spacing, SpanPrinter};
     use jiff::{SignedDuration, Span, SpanRelativeTo, SpanRound, Unit, ZonedDateTime};
     use pyo3::exceptions::{PyOverflowError, PyTypeError, PyValueError};
     use pyo3::prelude::*;
@@ -21,14 +23,18 @@ mod chronosapien {
     use pyo3::types::{PyDate, PyDateTime, PyType, PyTzInfoAccess};
 
     #[pymodule_export]
-    use super::{CalendarUnitError, ChronosapienError, InvalidUnitError, SpanParseError};
+    use super::{
+        CalendarUnitError, ChronosapienError, DurationFormatError, InvalidUnitError, SpanParseError,
+    };
 
     #[pymodule_export]
     #[allow(non_upper_case_globals)]
-    const __all__: (&str, &str, &str, &str, &str, &str) = (
+    const __all__: (&str, &str, &str, &str, &str, &str, &str, &str) = (
         "CalendarUnitError",
         "ChronosapienError",
         "Duration",
+        "DurationFormatError",
+        "DurationFormatter",
         "InvalidUnitError",
         "SpanParseError",
         "to_timedelta",
@@ -76,6 +82,16 @@ mod chronosapien {
                     .parse::<Span>()
                     .map_err(|err| SpanParseError::new_err(err.to_string()))?,
             })
+        }
+
+        // Keep timedelta days as fixed elapsed seconds across offset changes.
+        // https://docs.rs/jiff/latest/jiff/struct.Span.html#impl-TryFrom%3CSignedDuration%3E-for-Span
+        #[staticmethod]
+        #[pyo3(signature = (delta, /))]
+        fn from_timedelta(delta: SignedDuration) -> PyResult<Self> {
+            let span =
+                Span::try_from(delta).map_err(|err| PyOverflowError::new_err(err.to_string()))?;
+            Ok(Self { span })
         }
 
         // Jiff's Span::to_duration accepts a date or the 24-hour-day marker.
@@ -218,11 +234,39 @@ mod chronosapien {
         }
 
         fn __repr__(&self) -> String {
-            format!("Duration('{}')", self.to_friendly())
+            format!("Duration('{}')", self.span.to_friendly())
         }
 
-        fn to_friendly(&self) -> String {
-            self.span.to_friendly()
+        #[pyo3(signature = (
+            *,
+            designator="compact",
+            spacing="auto",
+            comma=None,
+            direction="auto",
+            hhmmss=false,
+            fractional=None,
+            precision=None,
+            padding=None,
+        ))]
+        #[expect(
+            clippy::too_many_arguments,
+            reason = "Python keyword-only printer options"
+        )]
+        fn to_friendly(
+            &self,
+            designator: &str,
+            spacing: &str,
+            comma: Option<bool>,
+            direction: &str,
+            hhmmss: bool,
+            fractional: Option<&str>,
+            precision: Option<&Bound<'_, PyAny>>,
+            padding: Option<&Bound<'_, PyAny>>,
+        ) -> PyResult<String> {
+            let formatter = DurationFormatter::new(
+                designator, spacing, comma, direction, hhmmss, fractional, precision, padding,
+            )?;
+            Ok(formatter.format(self))
         }
 
         #[getter]
@@ -273,6 +317,127 @@ mod chronosapien {
         #[getter]
         fn nanoseconds(&self) -> i64 {
             self.span.get_nanoseconds()
+        }
+    }
+
+    #[pyclass(frozen, module = "chronosapien")]
+    struct DurationFormatter {
+        printer: SpanPrinter,
+    }
+
+    #[pymethods]
+    impl DurationFormatter {
+        #[new]
+        #[pyo3(signature = (
+            *,
+            designator="compact",
+            spacing="auto",
+            comma=None,
+            direction="auto",
+            hhmmss=false,
+            fractional=None,
+            precision=None,
+            padding=None,
+        ))]
+        #[expect(
+            clippy::too_many_arguments,
+            reason = "Python keyword-only printer options"
+        )]
+        fn new(
+            designator: &str,
+            spacing: &str,
+            comma: Option<bool>,
+            direction: &str,
+            hhmmss: bool,
+            fractional: Option<&str>,
+            precision: Option<&Bound<'_, PyAny>>,
+            padding: Option<&Bound<'_, PyAny>>,
+        ) -> PyResult<Self> {
+            let (designator, default_spacing, default_comma) = match designator {
+                "compact" => (Designator::Compact, Spacing::BetweenUnits, false),
+                "short" => (Designator::Short, Spacing::BetweenUnits, false),
+                "verbose" => (
+                    Designator::Verbose,
+                    Spacing::BetweenUnitsAndDesignators,
+                    true,
+                ),
+                _ => {
+                    return Err(DurationFormatError::new_err(format!(
+                        "unknown friendly designator: {designator:?}"
+                    )));
+                }
+            };
+            let spacing = match spacing {
+                "auto" => default_spacing,
+                "none" => Spacing::None,
+                "units" => Spacing::BetweenUnits,
+                "designators" => Spacing::BetweenUnitsAndDesignators,
+                _ => {
+                    return Err(DurationFormatError::new_err(format!(
+                        "unknown friendly spacing: {spacing:?}"
+                    )));
+                }
+            };
+            let fractional = match fractional {
+                None => None,
+                Some("hour") => Some(FractionalUnit::Hour),
+                Some("minute") => Some(FractionalUnit::Minute),
+                Some("second") => Some(FractionalUnit::Second),
+                Some("millisecond") => Some(FractionalUnit::Millisecond),
+                Some("microsecond") => Some(FractionalUnit::Microsecond),
+                Some(unit) => {
+                    return Err(DurationFormatError::new_err(format!(
+                        "unknown fractional unit: {unit:?}"
+                    )));
+                }
+            };
+            if hhmmss && !matches!(fractional, None | Some(FractionalUnit::Second)) {
+                return Err(DurationFormatError::new_err(
+                    r#"hhmmss=True only supports fractional="second"."#,
+                ));
+            }
+            let direction = match direction {
+                "auto" => Direction::Auto,
+                "sign" => Direction::Sign,
+                "suffix" => Direction::Suffix,
+                _ => {
+                    return Err(DurationFormatError::new_err(format!(
+                        "unknown friendly direction: {direction:?}"
+                    )));
+                }
+            };
+            let check_digits =
+                |value: &Bound<'_, PyAny>, max: u8, name: &str| match value.extract::<u8>() {
+                    Ok(digits) if digits <= max => Ok(digits),
+                    Err(err) if !err.is_instance_of::<PyOverflowError>(value.py()) => Err(err),
+                    _ => Err(DurationFormatError::new_err(format!(
+                        "{name} must be between 0 and {max}."
+                    ))),
+                };
+            let precision = precision
+                .map(|value| check_digits(value, 9, "precision"))
+                .transpose()?;
+            let padding = padding
+                .map(|value| check_digits(value, 20, "padding"))
+                .transpose()?;
+            let printer = SpanPrinter::new()
+                .designator(designator)
+                .spacing(spacing)
+                .comma_after_designator(comma.unwrap_or(default_comma))
+                .hours_minutes_seconds(hhmmss)
+                .direction(direction)
+                .fractional(fractional)
+                .precision(precision);
+            let printer = match padding {
+                Some(padding) => printer.padding(padding),
+                None => printer,
+            };
+            Ok(Self { printer })
+        }
+
+        #[pyo3(signature = (duration, /))]
+        fn format(&self, duration: &Duration) -> String {
+            self.printer.span_to_string(&duration.span)
         }
     }
 

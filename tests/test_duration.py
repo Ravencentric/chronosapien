@@ -4,7 +4,14 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pytest
 
-from chronosapien import CalendarUnitError, Duration, InvalidUnitError, to_timedelta
+from chronosapien import (
+    CalendarUnitError,
+    Duration,
+    DurationFormatError,
+    DurationFormatter,
+    InvalidUnitError,
+    to_timedelta,
+)
 
 
 def test_span_preserves_signed_components() -> None:
@@ -30,7 +37,169 @@ def test_span_formats() -> None:
 
     assert str(span) == "P1M2DT3H"
     assert span.to_friendly() == "1mo 2d 3h"
+    assert span.to_friendly(designator="compact") == "1mo 2d 3h"
     assert repr(span) == "Duration('1mo 2d 3h')"
+
+
+def test_verbose_friendly_output_round_trips() -> None:
+    span = Duration("1h 30m ago")
+
+    text = span.to_friendly(designator="verbose")
+
+    assert text == "1 hour, 30 minutes ago"
+    assert Duration(text) == span
+
+
+def test_friendly_output_can_override_commas() -> None:
+    span = Duration("1h 30m")
+
+    assert span.to_friendly(comma=None) == "1h 30m"
+    assert span.to_friendly(comma=True) == "1h, 30m"
+    assert span.to_friendly(designator="verbose", comma=False) == "1 hour 30 minutes"
+    assert Duration("1y 2mo").to_friendly(designator="short", comma=True) == "1yr, 2mos"
+
+
+def test_friendly_output_can_override_spacing() -> None:
+    span = Duration("1h 30m")
+
+    assert span.to_friendly(spacing="none") == "1h30m"
+    assert span.to_friendly(spacing="none", comma=True) == "1h,30m"
+    assert span.to_friendly(designator="verbose", spacing="units") == "1hour, 30minutes"
+    assert (
+        span.to_friendly(designator="verbose", spacing="auto") == "1 hour, 30 minutes"
+    )
+
+
+def test_friendly_direction_can_override_the_sign() -> None:
+    span = Duration("-1d 2h")
+
+    assert span.to_friendly(hhmmss=True) == "1d 02:00:00 ago"
+    assert span.to_friendly(hhmmss=True, direction="auto") == "1d 02:00:00 ago"
+    assert span.to_friendly(hhmmss=True, direction="sign") == "-1d 02:00:00"
+    assert span.to_friendly(direction="sign") == "-1d 2h"
+    assert span.to_friendly(spacing="none", direction="suffix") == "1d2h ago"
+
+
+def test_hhmmss_preserves_stored_minutes() -> None:
+    span = Duration("1mo 2d 1500m 1501ms 1ns ago")
+
+    text = span.to_friendly(hhmmss=True)
+    assert text == "1mo 2d 00:1500:01.501000001 ago"
+
+
+def test_hhmmss_with_zero_time_fields() -> None:
+    assert Duration("0s").to_friendly(hhmmss=True) == "00:00:00"
+    assert Duration("-1d").to_friendly(hhmmss=True) == "1d 00:00:00 ago"
+
+
+def test_hhmmss_combines_with_designator_and_comma() -> None:
+    span = Duration("1d 2h")
+
+    assert span.to_friendly(designator="verbose", hhmmss=True) == "1 day, 02:00:00"
+    assert span.to_friendly(comma=True, hhmmss=True) == "1d, 02:00:00"
+    text = Duration("1y 2mo 2h").to_friendly(spacing="none", hhmmss=True)
+    assert text == "1y2mo 02:00:00"
+
+
+def test_friendly_precision_truncates_fractional_output() -> None:
+    span = Duration("1259ms")
+
+    assert span.to_friendly(precision=2) == "1259ms"
+    assert span.to_friendly(fractional="second", precision=2) == "1.25s"
+    assert span.to_friendly(hhmmss=True, precision=0) == "00:00:01"
+    assert span.to_friendly(hhmmss=True, fractional="second") == "00:00:01.259"
+
+
+def test_friendly_padding_applies_to_integer_fields() -> None:
+    span = Duration("1d 2h")
+
+    assert span.to_friendly(padding=3) == "001d 002h"
+    assert span.to_friendly(hhmmss=True, padding=3) == "001d 002:000:000"
+    assert span.to_friendly(hhmmss=True, padding=0) == "1d 2:0:0"
+
+
+def test_friendly_numeric_options_accept_the_maximum() -> None:
+    span = Duration("1s")
+
+    assert span.to_friendly(fractional="second", precision=9) == "1.000000000s"
+    assert span.to_friendly(padding=20) == "00000000000000000001s"
+
+
+@pytest.mark.parametrize("precision", [-1, 10, 2**128])
+def test_to_friendly_rejects_out_of_range_precision(precision: int) -> None:
+    span = Duration("1s")
+    with pytest.raises(DurationFormatError) as error:
+        _ = span.to_friendly(precision=precision)  # pyrefly: ignore[bad-argument-type]
+    assert str(error.value) == "precision must be between 0 and 9."
+
+
+@pytest.mark.parametrize("padding", [-1, 21, 2**128])
+def test_duration_formatter_rejects_out_of_range_padding(padding: int) -> None:
+    with pytest.raises(DurationFormatError) as error:
+        _ = DurationFormatter(padding=padding)  # pyrefly: ignore[bad-argument-type]
+    assert str(error.value) == "padding must be between 0 and 20."
+
+
+def test_hhmmss_rejects_a_conflicting_fractional_unit() -> None:
+    with pytest.raises(DurationFormatError) as error:
+        _ = Duration("1h").to_friendly(hhmmss=True, fractional="hour")
+    assert str(error.value) == 'hhmmss=True only supports fractional="second".'
+
+
+def test_to_friendly_rejects_an_unknown_designator() -> None:
+    with pytest.raises(DurationFormatError) as error:
+        _ = Duration("1h").to_friendly(designator="long")  # pyrefly: ignore[bad-argument-type]
+    assert str(error.value) == 'unknown friendly designator: "long"'
+
+
+def test_to_friendly_rejects_unknown_spacing() -> None:
+    with pytest.raises(DurationFormatError) as error:
+        _ = Duration("1h").to_friendly(spacing="all")  # pyrefly: ignore[bad-argument-type]
+    assert str(error.value) == 'unknown friendly spacing: "all"'
+
+
+def test_to_friendly_rejects_unknown_direction() -> None:
+    span = Duration("1h")
+    with pytest.raises(DurationFormatError) as error:
+        _ = span.to_friendly(direction="force_sign")  # pyrefly: ignore[bad-argument-type]
+    assert str(error.value) == 'unknown friendly direction: "force_sign"'
+
+
+def test_to_friendly_rejects_an_unknown_fractional_unit() -> None:
+    with pytest.raises(DurationFormatError) as error:
+        _ = Duration("1h").to_friendly(fractional="day")  # pyrefly: ignore[bad-argument-type]
+    assert str(error.value) == 'unknown fractional unit: "day"'
+
+
+def test_duration_formatter_reuses_options() -> None:
+    formatter = DurationFormatter(
+        designator="short",
+        spacing="designators",
+        comma=True,
+        direction="sign",
+        hhmmss=True,
+        fractional="second",
+        precision=3,
+        padding=3,
+    )
+    duration = Duration("-1y 1259ms")
+
+    assert formatter.format(duration) == "-001 yr, 000:000:001.259"
+    assert formatter.format(Duration("2h")) == "002:000:000.000"
+    assert DurationFormatter().format(duration) == duration.to_friendly()
+
+
+def test_duration_formatter_is_immutable() -> None:
+    formatter = DurationFormatter(precision=3)
+
+    with pytest.raises(AttributeError):
+        object.__setattr__(formatter, "precision", 2)
+
+
+def test_duration_formatter_validates_options_at_construction() -> None:
+    with pytest.raises(DurationFormatError) as error:
+        _ = DurationFormatter(hhmmss=True, fractional="hour")
+    assert str(error.value) == 'hhmmss=True only supports fractional="second".'
 
 
 def test_span_equality_and_hash_use_stored_units() -> None:
@@ -171,6 +340,20 @@ def test_month_arithmetic_clamps_to_end_of_february(zone: tzinfo | None) -> None
     assert month.to_timedelta(relative_to=january_31) == timedelta(days=29)
 
 
+@pytest.mark.parametrize(
+    "delta",
+    [timedelta(), timedelta(days=2, microseconds=42), timedelta(microseconds=-1501)],
+)
+def test_from_timedelta_round_trips(delta: timedelta) -> None:
+    assert Duration.from_timedelta(delta).to_timedelta() == delta
+
+
+@pytest.mark.parametrize("delta", [timedelta.min, timedelta.max])
+def test_from_timedelta_rejects_out_of_range_values(delta: timedelta) -> None:
+    with pytest.raises(OverflowError, match="seconds"):
+        _ = Duration.from_timedelta(delta)
+
+
 def test_spring_dst_transition_makes_calendar_day_23_hours() -> None:
     try:
         zone = ZoneInfo("America/New_York")
@@ -180,8 +363,10 @@ def test_spring_dst_transition_makes_calendar_day_23_hours() -> None:
     midnight_before = datetime(2024, 3, 10, tzinfo=zone)
     midnight_after = datetime(2024, 3, 11, tzinfo=zone)
     calendar_day = Duration("1d")
+    fixed_day = Duration.from_timedelta(timedelta(days=1))
 
     assert calendar_day.to_timedelta(relative_to=midnight_before) == timedelta(hours=23)
+    assert fixed_day.add_to(midnight_before) == datetime(2024, 3, 11, 1, tzinfo=zone)
     assert calendar_day.equivalent_to(Duration("23h"), relative_to=midnight_before)
     assert calendar_day.total("hour", relative_to=midnight_before) == 23.0
     assert Duration("23h").total("day", relative_to=midnight_before) == 1.0

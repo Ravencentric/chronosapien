@@ -27,7 +27,9 @@ assert Duration("1mo, 2 days 3h") == span
 assert Duration("P1M2DT3H") == span
 ```
 
-These inputs come from [Jiff's friendly-format examples](https://docs.rs/jiff/latest/jiff/fmt/friendly/index.html).
+With the default options, these inputs from
+[Jiff's friendly-format examples](https://docs.rs/jiff/latest/jiff/fmt/friendly/index.html)
+produce the following output.
 
 | Input                         | `Duration(text).to_friendly()`     |
 |-------------------------------|------------------------------------|
@@ -39,8 +41,7 @@ These inputs come from [Jiff's friendly-format examples](https://docs.rs/jiff/la
 | `3 mins 34,123s`              | `3m 34s 123ms`                     |
 | `2 months, 35 days, 02:30:00` | `2mo 35d 2h 30m`                   |
 
-See the API docs for [`to_timedelta()`](https://ravencentri.cc/chronosapien/reference/to-timedelta/)
-and [`Duration`](https://ravencentri.cc/chronosapien/reference/duration/).
+See the API docs [here](https://ravencentri.cc/chronosapien/).
 
 ## Installation
 

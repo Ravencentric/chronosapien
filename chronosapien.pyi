@@ -27,11 +27,6 @@ SpanUnit: TypeAlias = Literal[
     "nanosecond",
 ]
 
-PrecisionLiteral: TypeAlias = Literal[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-PaddingLiteral: TypeAlias = Literal[
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
-]
-
 class ChronosapienError(Exception):
     """Base class for Chronosapien's custom exceptions."""
 
@@ -499,8 +494,8 @@ class Duration:
         hhmmss: bool = False,
         fractional: Literal["hour", "minute", "second", "millisecond", "microsecond"]
         | None = None,
-        precision: PrecisionLiteral | None = None,
-        padding: PaddingLiteral | None = None,
+        precision: int | None = None,
+        padding: int | None = None,
     ) -> str:
         """Return a human-readable duration string.
 
@@ -672,8 +667,8 @@ class DurationFormatter:
         hhmmss: bool = False,
         fractional: Literal["hour", "minute", "second", "millisecond", "microsecond"]
         | None = None,
-        precision: PrecisionLiteral | None = None,
-        padding: PaddingLiteral | None = None,
+        precision: int | None = None,
+        padding: int | None = None,
     ) -> DurationFormatter:
         """Validate and store the options described in
         [`Duration.to_friendly()`][chronosapien.Duration.to_friendly].

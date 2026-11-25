@@ -56,7 +56,7 @@ build = ["cp311-*", "cp315t-*"]
 archs = "native"
 build-frontend = "build[uv]"
 test-groups = ["test"]
-test-sources = ["pyproject.toml", "tests"]
+test-sources = ["chronosapien.pyi", "pyproject.toml", "tests"]
 test-command = "pytest"
 
 [tool.cibuildwheel.linux]
@@ -85,11 +85,12 @@ project-includes = [
 ]
 
 [tool.pytest]
-addopts = ["-ra", "--showlocals"]
+addopts = ["-p", "stub_examples", "-ra", "--showlocals"]
 filterwarnings = ["error"]
 log_cli_level = "INFO"
+pythonpath = ["tests"]
 strict = true
-testpaths = ["tests"]
+testpaths = ["tests", "chronosapien.pyi"]
 
 [tool.ruff.lint.per-file-ignores]
 "chronosapien.pyi" = ["PYI021", "PYI029"]

@@ -19,3 +19,7 @@
 ::: chronosapien.DurationFormatError
     options:
       heading_level: 2
+
+::: chronosapien.DurationRoundError
+    options:
+      heading_level: 2

@@ -8,6 +8,7 @@ pyo3::create_exception!(
 pyo3::create_exception!(chronosapien, SpanParseError, ChronosapienError);
 pyo3::create_exception!(chronosapien, CalendarUnitError, ChronosapienError);
 pyo3::create_exception!(chronosapien, DurationFormatError, ChronosapienError);
+pyo3::create_exception!(chronosapien, DurationRoundError, ChronosapienError);
 pyo3::create_exception!(chronosapien, InvalidUnitError, ChronosapienError);
 
 #[pymodule]
@@ -17,7 +18,8 @@ mod chronosapien {
     use jiff::civil::{Date, DateTime};
     use jiff::fmt::friendly::{Designator, Direction, FractionalUnit, Spacing, SpanPrinter};
     use jiff::{
-        SignedDuration, Span, SpanArithmetic, SpanRelativeTo, SpanRound, Unit, ZonedDateTime,
+        RoundMode, SignedDuration, Span, SpanArithmetic, SpanRelativeTo, SpanRound, Unit,
+        ZonedDateTime,
     };
     use pyo3::exceptions::{PyOverflowError, PyTypeError, PyValueError};
     use pyo3::prelude::*;
@@ -26,17 +28,19 @@ mod chronosapien {
 
     #[pymodule_export]
     use super::{
-        CalendarUnitError, ChronosapienError, DurationFormatError, InvalidUnitError, SpanParseError,
+        CalendarUnitError, ChronosapienError, DurationFormatError, DurationRoundError,
+        InvalidUnitError, SpanParseError,
     };
 
     #[pymodule_export]
     #[allow(non_upper_case_globals)]
-    const __all__: (&str, &str, &str, &str, &str, &str, &str, &str) = (
+    const __all__: (&str, &str, &str, &str, &str, &str, &str, &str, &str) = (
         "CalendarUnitError",
         "ChronosapienError",
         "Duration",
         "DurationFormatError",
         "DurationFormatter",
+        "DurationRoundError",
         "InvalidUnitError",
         "SpanParseError",
         "to_timedelta",
@@ -192,11 +196,13 @@ mod chronosapien {
         // ties away from zero. Jiff's marker also supports unanchored weeks.
         // https://docs.rs/jiff/latest/jiff/struct.Span.html#method.round
         // https://tc39.es/proposal-temporal/#sec-temporal.duration.prototype.round
-        #[pyo3(signature = (*, largest, smallest="nanosecond", relative_to=None))]
+        #[pyo3(signature = (*, largest, smallest="nanosecond", increment=1, mode="half_expand", relative_to=None))]
         fn round(
             &self,
             largest: &str,
             smallest: &str,
+            increment: i64,
+            mode: &str,
             relative_to: Option<&Bound<'_, PyDate>>,
         ) -> PyResult<Self> {
             let largest = parse_unit(largest)?;
@@ -207,10 +213,33 @@ mod chronosapien {
                 ));
             }
 
-            let options = SpanRound::new().largest(largest).smallest(smallest);
+            let mode = match mode {
+                "ceil" => RoundMode::Ceil,
+                "floor" => RoundMode::Floor,
+                "expand" => RoundMode::Expand,
+                "trunc" => RoundMode::Trunc,
+                "half_ceil" => RoundMode::HalfCeil,
+                "half_floor" => RoundMode::HalfFloor,
+                "half_expand" => RoundMode::HalfExpand,
+                "half_trunc" => RoundMode::HalfTrunc,
+                "half_even" => RoundMode::HalfEven,
+                _ => {
+                    return Err(DurationRoundError::new_err(format!(
+                        "unknown rounding mode: {mode:?}"
+                    )));
+                }
+            };
+
+            let options = SpanRound::new()
+                .largest(largest)
+                .smallest(smallest)
+                .increment(increment)
+                .mode(mode);
             let span = if relative_to.is_some() {
                 with_span_reference(relative_to, |reference| {
-                    self.span.round(options.relative(reference))
+                    self.span
+                        .round(options.relative(reference))
+                        .map_err(|err| DurationRoundError::new_err(err.to_string()))
                 })?
             } else {
                 if largest >= Unit::Month
@@ -219,7 +248,9 @@ mod chronosapien {
                 {
                     return Err(missing_span_reference());
                 }
-                self.span.round(options.days_are_24_hours())?
+                self.span
+                    .round(options.days_are_24_hours())
+                    .map_err(|err| DurationRoundError::new_err(err.to_string()))?
             };
             Ok(Self { span })
         }
@@ -545,9 +576,9 @@ mod chronosapien {
         )
     }
 
-    fn with_span_reference<T>(
+    fn with_span_reference<T, E: Into<PyErr>>(
         relative_to: Option<&Bound<'_, PyDate>>,
-        operation: impl FnOnce(SpanRelativeTo<'_>) -> Result<T, jiff::Error>,
+        operation: impl FnOnce(SpanRelativeTo<'_>) -> Result<T, E>,
     ) -> PyResult<T> {
         let Some(relative_to) = relative_to else {
             return operation(SpanRelativeTo::days_are_24_hours())
@@ -561,7 +592,7 @@ mod chronosapien {
         } else {
             operation(relative_to.extract::<Date>()?.into())
         };
-        Ok(result?)
+        result.map_err(Into::into)
     }
 
     enum ReferenceDateTime {

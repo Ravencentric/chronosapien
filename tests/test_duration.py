@@ -6,9 +6,11 @@ import pytest
 
 from chronosapien import (
     CalendarUnitError,
+    ChronosapienError,
     Duration,
     DurationFormatError,
     DurationFormatter,
+    DurationRoundError,
     InvalidUnitError,
     to_timedelta,
 )
@@ -312,6 +314,123 @@ def test_round_ties_away_from_zero(text: str, expected: str) -> None:
     assert Duration(text).round(largest="hour", smallest="hour") == Duration(expected)
 
 
+@pytest.mark.parametrize(
+    ("mode", "positive", "negative"),
+    [
+        ("ceil", "2h", "-1h"),
+        ("floor", "1h", "-2h"),
+        ("expand", "2h", "-2h"),
+        ("trunc", "1h", "-1h"),
+        ("half_ceil", "2h", "-1h"),
+        ("half_floor", "1h", "-2h"),
+        ("half_expand", "2h", "-2h"),
+        ("half_trunc", "1h", "-1h"),
+        ("half_even", "2h", "-2h"),
+    ],
+)
+def test_round_modes_handle_positive_and_negative_ties(
+    mode: str,
+    positive: str,
+    negative: str,
+) -> None:
+    assert Duration("90m").round(
+        largest="hour",
+        smallest="hour",
+        mode=mode,  # pyrefly: ignore[bad-argument-type]
+    ) == Duration(positive)
+    assert Duration("-90m").round(
+        largest="hour",
+        smallest="hour",
+        mode=mode,  # pyrefly: ignore[bad-argument-type]
+    ) == Duration(negative)
+
+
+def test_round_half_even_selects_even_multiples() -> None:
+    assert Duration("2h 30m").round(
+        largest="hour", smallest="hour", mode="half_even"
+    ) == Duration("2h")
+    assert Duration("12m 30s").round(
+        largest="minute", smallest="minute", increment=5, mode="half_even"
+    ) == Duration("10m")
+    assert Duration("7m 30s").round(
+        largest="minute", smallest="minute", increment=5, mode="half_even"
+    ) == Duration("10m")
+
+
+def test_round_increments_apply_the_selected_mode() -> None:
+    assert Duration("1h 10m").round(
+        largest="hour", smallest="minute", increment=15, mode="ceil"
+    ) == Duration("1h 15m")
+    assert Duration("-1h 10m").round(
+        largest="hour", smallest="minute", increment=15, mode="floor"
+    ) == Duration("-1h 15m")
+    assert Duration("4h 2m 30s").round(
+        largest="hour", smallest="minute", increment=5
+    ) == Duration("4h 5m")
+
+
+def test_round_calendar_increments_use_the_reference() -> None:
+    assert Duration("10mo 15d").round(
+        largest="month",
+        smallest="month",
+        increment=3,
+        mode="trunc",
+        relative_to=date(2024, 1, 1),
+    ) == Duration("9mo")
+    zero = Duration("0s").round(
+        largest="year",
+        smallest="year",
+        increment=1_000_000_000,
+        relative_to=date(2024, 1, 1),
+    )
+    assert zero.is_zero()
+
+
+@pytest.mark.parametrize(
+    ("smallest", "increment"),
+    [
+        ("nanosecond", 0),
+        ("nanosecond", -1),
+        ("nanosecond", 7),
+        ("nanosecond", 1000),
+        ("minute", 7),
+        ("minute", 60),
+        ("hour", 24),
+        ("day", 1_000_000_001),
+        ("year", 1_000_000_001),
+    ],
+)
+def test_round_rejects_invalid_increments(
+    smallest: Literal["nanosecond", "minute", "hour", "day", "year"], increment: int
+) -> None:
+    with pytest.raises(DurationRoundError, match="round"):
+        _ = Duration("0s").round(
+            largest=smallest,
+            smallest=smallest,
+            increment=increment,
+            relative_to=date(2024, 1, 1),
+        )
+
+
+def test_round_rejects_an_unknown_mode() -> None:
+    with pytest.raises(DurationRoundError) as error:
+        _ = Duration("1h").round(largest="hour", mode="unknown")  # pyrefly: ignore[bad-argument-type]
+    assert isinstance(error.value, ChronosapienError)
+    assert str(error.value) == 'unknown rounding mode: "unknown"'
+
+
+@pytest.mark.parametrize(
+    "relative_to", [None, date(2024, 1, 1), datetime(2024, 1, 1, tzinfo=UTC)]
+)
+def test_round_rejects_an_invalid_increment_for_nonzero_spans(
+    relative_to: date | None,
+) -> None:
+    with pytest.raises(DurationRoundError, match="round"):
+        _ = Duration("5m").round(
+            largest="minute", smallest="minute", increment=7, relative_to=relative_to
+        )
+
+
 def test_round_rejects_reversed_units() -> None:
     with pytest.raises(InvalidUnitError) as error:
         _ = Duration("1h").round(largest="minute", smallest="hour")
@@ -332,9 +451,22 @@ def test_round_requires_a_reference_for_months_and_years(
     assert str(error.value) == expected
 
 
-def test_round_out_of_range_without_a_reference() -> None:
-    with pytest.raises(ValueError, match="nanosecond"):
-        _ = Duration("200000d").round(largest="nanosecond")
+@pytest.mark.parametrize(
+    "relative_to", [None, date(2024, 1, 1), datetime(2024, 1, 1, tzinfo=UTC)]
+)
+@pytest.mark.parametrize("increment", [1, 2])
+def test_round_out_of_range_raises_duration_round_error(
+    relative_to: date | None, increment: int
+) -> None:
+    with pytest.raises(DurationRoundError, match="nanosecond"):
+        _ = Duration("200000d").round(
+            largest="nanosecond", increment=increment, relative_to=relative_to
+        )
+
+
+def test_round_out_of_range_reference_calculation_raises_duration_round_error() -> None:
+    with pytest.raises(DurationRoundError):
+        _ = Duration("1mo").round(largest="month", relative_to=date.max)
 
 
 def test_span_arithmetic_uses_fixed_days_and_weeks_without_a_reference() -> None:
@@ -500,6 +632,13 @@ def test_spring_dst_transition_makes_calendar_day_23_hours() -> None:
         Duration("23h").round(largest="day", relative_to=midnight_before)
         == calendar_day
     )
+    assert Duration("23h 5m").round(
+        largest="day",
+        smallest="minute",
+        increment=15,
+        mode="ceil",
+        relative_to=midnight_before,
+    ) == Duration("1d 15m")
     assert to_timedelta("1d", relative_to=midnight_before) == timedelta(hours=23)
     assert to_timedelta("1d", relative_to=None) == timedelta(hours=24)
 
@@ -517,6 +656,8 @@ def test_unsupported_timezone_raises_type_error() -> None:
 
     with pytest.raises(TypeError, match="naive datetime"):
         _ = Duration("1d").to_timedelta(relative_to=start)
+    with pytest.raises(TypeError, match="naive datetime"):
+        _ = Duration("1d").round(largest="day", relative_to=start)
 
 
 def test_span_sign_predicates() -> None:

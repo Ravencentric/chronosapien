@@ -9,6 +9,7 @@ __all__: Final = (
     "Duration",
     "DurationFormatError",
     "DurationFormatter",
+    "DurationRoundError",
     "InvalidUnitError",
     "SpanParseError",
     "to_timedelta",
@@ -35,6 +36,9 @@ class CalendarUnitError(ChronosapienError):
 
 class DurationFormatError(ChronosapienError):
     """An unknown formatting option value or an unsupported precision or padding."""
+
+class DurationRoundError(ChronosapienError):
+    """An unknown rounding mode or a failure to round a duration."""
 
 class InvalidUnitError(ChronosapienError):
     """An unknown unit name or invalid ordering of rounding units."""
@@ -286,6 +290,18 @@ class Duration:
         *,
         largest: SpanUnit,
         smallest: SpanUnit = "nanosecond",
+        increment: int = 1,
+        mode: Literal[
+            "ceil",
+            "floor",
+            "expand",
+            "trunc",
+            "half_ceil",
+            "half_floor",
+            "half_expand",
+            "half_trunc",
+            "half_even",
+        ] = "half_expand",
         relative_to: date | None = None,
     ) -> Duration:
         """
@@ -293,8 +309,28 @@ class Duration:
 
         Both bounds take singular unit names from `"nanosecond"` through `"year"`.
         `largest` caps the units in the result. The default `smallest` preserves
-        nanosecond precision. A coarser `smallest` rounds to the nearest unit,
-        with ties away from zero.
+        nanosecond precision.
+
+        `increment` sets the rounding increment in units of `smallest`. It
+        must be between 1 and 1,000,000,000. For units smaller than a day, it
+        must be less than the number of those units in the next larger unit
+        and divide that number evenly. For example, 15 and 30 are valid minute
+        increments, while 7 and 60 are not. The default increment is 1.
+
+        `mode` controls the direction of rounding. `"ceil"` rounds toward
+        positive infinity, `"floor"` toward negative infinity, `"expand"` away
+        from zero, and `"trunc"` toward zero. The remaining modes round to the
+        nearest increment and differ in how they handle ties.
+
+        - `"half_ceil"` rounds ties toward positive infinity.
+        - `"half_floor"` rounds ties toward negative infinity.
+        - `"half_expand"` rounds ties away from zero.
+        - `"half_trunc"` rounds ties toward zero.
+        - `"half_even"` rounds ties to an even multiple of the increment.
+
+        The default mode is `"half_expand"`. For example, with
+        `largest="hour"`, `smallest="minute"`, `increment=15`, and
+        `mode="ceil"`, `1h 10m` rounds to `1h 15m`.
 
         Without a reference, a day is 24 hours and a week is seven days.
         Supply `relative_to` when the span has nonzero months or years, or when
@@ -306,15 +342,18 @@ class Duration:
         Raises
         ------
         TypeError
-            If either bound is not a string or the reference has an unsupported
-            type or `tzinfo`.
+            If either bound or `mode` is not a string, `increment` is not an
+            integer, or the reference has an unsupported type or `tzinfo`.
         InvalidUnitError
             If a unit name is unknown or `largest` is smaller than `smallest`.
+        DurationRoundError
+            If `mode` is unknown, `increment` is invalid for the smallest unit,
+            or the rounding calculation exceeds the supported range.
         CalendarUnitError
             If months or years are involved and no reference was supplied.
         ValueError
             If the `ZoneInfo` key is missing or unrecognized, or the reference
-            or result is out of range.
+            is out of range.
 
         Examples
         --------
@@ -324,6 +363,12 @@ class Duration:
         span = Duration("119m 31s")
         assert span.round(largest="hour") == Duration("1h 59m 31s")
         assert span.round(largest="hour", smallest="minute") == Duration("2h")
+        assert Duration("1h 10m").round(
+            largest="hour", smallest="minute", increment=15, mode="ceil"
+        ) == Duration("1h 15m")
+        assert Duration("2h 30m").round(
+            largest="hour", smallest="hour", mode="half_even"
+        ) == Duration("2h")
         ```
         """
 

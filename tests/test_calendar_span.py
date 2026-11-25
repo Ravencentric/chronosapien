@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pytest
 
-from chronosapien import CalendarSpan
+from chronosapien import CalendarSpan, CalendarUnitError, InvalidUnitError, duration
 
 
 def test_span_preserves_signed_components() -> None:
@@ -57,10 +57,61 @@ def test_month_equivalence_depends_on_reference_date() -> None:
     assert not month.equivalent_to(twenty_eight_days, relative_to=date(2024, 2, 1))
 
 
-def test_equivalence_uses_nanosecond_precision() -> None:
-    start = date(2025, 2, 1)
+@pytest.mark.parametrize("relative_to", [None, date(2025, 2, 1)])
+def test_equivalence_uses_nanosecond_precision(relative_to: date | None) -> None:
+    assert not CalendarSpan("1ns").equivalent_to(
+        CalendarSpan("2ns"), relative_to=relative_to
+    )
 
-    assert not CalendarSpan("1ns").equivalent_to(CalendarSpan("2ns"), relative_to=start)
+
+@pytest.mark.parametrize(("text", "hours"), [("1d", 24), ("1w", 168)])
+def test_days_and_weeks_are_fixed_without_a_reference(text: str, hours: int) -> None:
+    span = CalendarSpan(text)
+
+    assert span.to_timedelta() == timedelta(hours=hours)
+    assert span.total("hour", relative_to=None) == hours
+    assert span.equivalent_to(CalendarSpan(f"{hours}h"))
+
+
+@pytest.mark.parametrize("text", ["1mo", "1y"])
+def test_months_and_years_require_a_reference(text: str) -> None:
+    span = CalendarSpan(text)
+    hour = CalendarSpan("1h")
+    expected = "relative_to is required for years or months. Pass a date or datetime."
+
+    with pytest.raises(CalendarUnitError) as error:
+        _ = span.to_timedelta()
+    assert str(error.value) == expected
+
+    with pytest.raises(CalendarUnitError) as error:
+        _ = hour.equivalent_to(span)
+    assert str(error.value) == expected
+
+    with pytest.raises(CalendarUnitError) as error:
+        _ = span.total("hour")
+    assert str(error.value) == expected
+
+
+def test_total_requires_a_reference_for_months() -> None:
+    with pytest.raises(CalendarUnitError) as error:
+        _ = CalendarSpan("24h").total("month")
+    assert str(error.value) == (
+        "relative_to is required for years or months. Pass a date or datetime."
+    )
+
+
+def test_total_treats_weeks_as_seven_days_without_a_reference() -> None:
+    assert CalendarSpan("252h").total("week", relative_to=None) == 1.5
+
+
+def test_total_rejects_an_unknown_unit() -> None:
+    with pytest.raises(InvalidUnitError) as error:
+        _ = CalendarSpan("1h").total("fortnight")  # pyrefly: ignore[bad-argument-type]
+    assert str(error.value) == 'unknown unit: "fortnight"'
+
+
+def test_total_preserves_fractional_microseconds() -> None:
+    assert CalendarSpan("-1500ns").total("microsecond") == -1.5
 
 
 @pytest.mark.parametrize(
@@ -97,6 +148,10 @@ def test_spring_dst_transition_makes_calendar_day_23_hours() -> None:
 
     assert calendar_day.to_timedelta(relative_to=midnight_before) == timedelta(hours=23)
     assert calendar_day.equivalent_to(CalendarSpan("23h"), relative_to=midnight_before)
+    assert calendar_day.total("hour", relative_to=midnight_before) == 23.0
+    assert CalendarSpan("23h").total("day", relative_to=midnight_before) == 1.0
+    assert duration("1d", relative_to=midnight_before) == timedelta(hours=23)
+    assert duration("1d", relative_to=None) == timedelta(hours=24)
 
     added = calendar_day.add_to(midnight_before)
     assert added == midnight_after

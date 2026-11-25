@@ -32,6 +32,10 @@ def test_duration_rejects_calendar_units(text: str) -> None:
     with pytest.raises(CalendarUnitError) as error:
         _ = duration(text)
     assert isinstance(error.value, ChronosapienError)
+    assert str(error.value) == (
+        "duration() requires relative_to for nonzero years or months. "
+        "Pass a date or datetime."
+    )
 
 
 @pytest.mark.parametrize("parse", [duration, CalendarSpan])

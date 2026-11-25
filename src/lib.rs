@@ -7,43 +7,49 @@ pyo3::create_exception!(
 );
 pyo3::create_exception!(chronosapien, SpanParseError, ChronosapienError);
 pyo3::create_exception!(chronosapien, CalendarUnitError, ChronosapienError);
+pyo3::create_exception!(chronosapien, InvalidUnitError, ChronosapienError);
 
 #[pymodule]
 mod chronosapien {
     use std::hash::{Hash, Hasher};
 
     use jiff::civil::{Date, DateTime};
-    use jiff::{SignedDuration, Span, SpanRelativeTo, ZonedDateTime};
+    use jiff::{SignedDuration, Span, SpanRelativeTo, Unit, ZonedDateTime};
     use pyo3::exceptions::{PyOverflowError, PyTypeError, PyValueError};
     use pyo3::prelude::*;
     use pyo3::sync::PyOnceLock;
     use pyo3::types::{PyDate, PyDateTime, PyType, PyTzInfoAccess};
 
     #[pymodule_export]
-    use super::{CalendarUnitError, ChronosapienError, SpanParseError};
+    use super::{CalendarUnitError, ChronosapienError, InvalidUnitError, SpanParseError};
 
     #[pymodule_export]
     #[allow(non_upper_case_globals)]
-    const __all__: (&str, &str, &str, &str, &str) = (
+    const __all__: (&str, &str, &str, &str, &str, &str) = (
         "CalendarSpan",
         "CalendarUnitError",
         "ChronosapienError",
+        "InvalidUnitError",
         "SpanParseError",
         "duration",
     );
 
+    // With no reference, Jiff's marker preserves 24-hour days and seven-day
+    // weeks. Temporal's Duration.total likewise defaults to 24-hour days.
+    // https://docs.rs/jiff/latest/jiff/struct.SpanRelativeTo.html#method.days_are_24_hours
+    // https://tc39.es/proposal-temporal/#sec-temporal.duration.prototype.total
     #[pyfunction]
-    #[pyo3(signature = (text, /))]
-    fn duration(text: &str) -> PyResult<SignedDuration> {
+    #[pyo3(signature = (text, /, *, relative_to=None))]
+    fn duration(text: &str, relative_to: Option<&Bound<'_, PyDate>>) -> PyResult<SignedDuration> {
         let span = text
             .parse::<Span>()
             .map_err(|err| SpanParseError::new_err(err.to_string()))?;
-        if span.get_years() != 0 || span.get_months() != 0 {
+        if relative_to.is_none() && (span.get_years() != 0 || span.get_months() != 0) {
             return Err(CalendarUnitError::new_err(
-                "duration() requires zero years and months",
+                "duration() requires relative_to for nonzero years or months. Pass a date or datetime.",
             ));
         }
-        Ok(span.to_duration(SpanRelativeTo::days_are_24_hours())?)
+        CalendarSpan { span }.to_timedelta(relative_to)
     }
 
     #[pyclass(frozen, eq, hash, module = "chronosapien")]
@@ -77,13 +83,50 @@ mod chronosapien {
             })
         }
 
-        #[pyo3(signature = (*, relative_to))]
-        fn to_timedelta(&self, relative_to: &Bound<'_, PyDate>) -> PyResult<SignedDuration> {
+        // Jiff's Span::to_duration accepts a date or the 24-hour-day marker.
+        // Temporal's Duration.total also defaults to 24-hour days.
+        // https://docs.rs/jiff/latest/jiff/struct.Span.html#method.to_duration
+        // https://tc39.es/proposal-temporal/#sec-temporal.duration.prototype.total
+        #[pyo3(signature = (*, relative_to=None))]
+        fn to_timedelta(
+            &self,
+            relative_to: Option<&Bound<'_, PyDate>>,
+        ) -> PyResult<SignedDuration> {
             with_span_reference(relative_to, |reference| self.span.to_duration(reference))
         }
 
-        #[pyo3(signature = (other, /, *, relative_to))]
-        fn equivalent_to(&self, other: &Self, relative_to: &Bound<'_, PyDate>) -> PyResult<bool> {
+        // Like Temporal's Duration.total, default to 24-hour days. Jiff's marker
+        // also treats weeks as seven days when the span or target uses weeks.
+        // https://docs.rs/jiff/latest/jiff/struct.Span.html#method.total
+        // https://tc39.es/proposal-temporal/#sec-temporal.duration.prototype.total
+        #[pyo3(signature = (unit, /, *, relative_to=None))]
+        fn total(&self, unit: &str, relative_to: Option<&Bound<'_, PyDate>>) -> PyResult<f64> {
+            let unit = match unit {
+                "year" => Unit::Year,
+                "month" => Unit::Month,
+                "week" => Unit::Week,
+                "day" => Unit::Day,
+                "hour" => Unit::Hour,
+                "minute" => Unit::Minute,
+                "second" => Unit::Second,
+                "millisecond" => Unit::Millisecond,
+                "microsecond" => Unit::Microsecond,
+                "nanosecond" => Unit::Nanosecond,
+                _ => return Err(InvalidUnitError::new_err(format!("unknown unit: {unit:?}"))),
+            };
+            with_span_reference(relative_to, |reference| self.span.total((unit, reference)))
+        }
+
+        // Like Temporal's Duration.compare, compare unanchored days as 24 hours.
+        // Jiff's marker also treats a week in either span as seven days.
+        // https://docs.rs/jiff/latest/jiff/struct.Span.html#method.compare
+        // https://tc39.es/proposal-temporal/#sec-temporal.duration.compare
+        #[pyo3(signature = (other, /, *, relative_to=None))]
+        fn equivalent_to(
+            &self,
+            other: &Self,
+            relative_to: Option<&Bound<'_, PyDate>>,
+        ) -> PyResult<bool> {
             with_span_reference(relative_to, |reference| {
                 self.span
                     .compare((other.span, reference))
@@ -215,9 +258,16 @@ mod chronosapien {
     }
 
     fn with_span_reference<T>(
-        relative_to: &Bound<'_, PyDate>,
+        relative_to: Option<&Bound<'_, PyDate>>,
         operation: impl FnOnce(SpanRelativeTo<'_>) -> Result<T, jiff::Error>,
     ) -> PyResult<T> {
+        let Some(relative_to) = relative_to else {
+            return operation(SpanRelativeTo::days_are_24_hours()).map_err(|_| {
+                CalendarUnitError::new_err(
+                    "relative_to is required for years or months. Pass a date or datetime.",
+                )
+            });
+        };
         let result = if let Ok(datetime) = relative_to.cast::<PyDateTime>() {
             match ReferenceDateTime::from_python(datetime)? {
                 ReferenceDateTime::Naive(datetime) => operation(datetime.into()),

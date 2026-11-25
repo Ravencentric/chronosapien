@@ -1,12 +1,13 @@
 """Parse fixed durations and calendar spans using Jiff."""
 
 from datetime import date, datetime, timedelta
-from typing import Final, final
+from typing import Final, Literal, final
 
 __all__: Final = (
     "CalendarSpan",
     "CalendarUnitError",
     "ChronosapienError",
+    "InvalidUnitError",
     "SpanParseError",
     "duration",
 )
@@ -15,33 +16,44 @@ class ChronosapienError(Exception):
     """Base class for Chronosapien's custom exceptions."""
 
 class CalendarUnitError(ChronosapienError):
-    """A span passed to `duration()` contains nonzero years or months."""
+    """A year or month requires a reference date and none was supplied."""
+
+class InvalidUnitError(ChronosapienError):
+    """An unknown unit was passed to `CalendarSpan.total()`."""
 
 class SpanParseError(ChronosapienError):
     """Invalid span text or a component outside its supported range."""
 
-def duration(text: str, /) -> timedelta:
+def duration(text: str, /, *, relative_to: date | None = None) -> timedelta:
     """
     Parse an ISO 8601 or human-readable duration into a `timedelta`.
     For more input examples, see [Jiff's friendly format](https://docs.rs/jiff/latest/jiff/fmt/friendly/index.html).
 
-    A day is 24 hours and a week is seven days.
-    Fractions of a microsecond are truncated toward zero in the `timedelta`.
+    Without a reference, a day is 24 hours and a week is seven days.
+    Supply `relative_to` when the span has nonzero months or years. The
+    reference can be a `date` or a `datetime`. A `datetime` can be naive or
+    use `datetime.timezone` or a named `zoneinfo.ZoneInfo`. Named zones
+    account for offset transitions.
+
+    Fractional seconds in fixed offsets and fractional microseconds in the
+    result are truncated toward zero.
 
     Raises
     ------
     TypeError
-        If the call supplies anything other than a `str`.
+        If `text` is not a string or the reference has an unsupported type or `tzinfo`.
     SpanParseError
         If the duration syntax is invalid or a component is out of range.
     CalendarUnitError
-        If the parsed span contains nonzero years or months.
-        Use `CalendarSpan(text)` to parse durations with those units.
+        If the span has nonzero years or months and no reference was supplied.
+    ValueError
+        If the `ZoneInfo` key is missing or unrecognized, or the reference or
+        result is out of range.
 
     Examples
     --------
     ```python
-    from datetime import timedelta
+    from datetime import date, timedelta
 
     from chronosapien import duration
 
@@ -49,6 +61,8 @@ def duration(text: str, /) -> timedelta:
     assert duration("1 day 2 hours") == timedelta(hours=26)
     # P1DT2H is the ISO 8601 spelling of one day and two hours.
     assert duration("P1DT2H") == duration("1 day 2 hours")
+    # One month starting on February 1 lasts 28 days in 2026.
+    assert duration("1mo", relative_to=date(2026, 2, 1)) == timedelta(days=28)
     ```
     """
 
@@ -85,9 +99,12 @@ class CalendarSpan:
         ```
         """
 
-    def to_timedelta(self, *, relative_to: date) -> timedelta:
+    def to_timedelta(self, *, relative_to: date | None = None) -> timedelta:
         """
-        Return elapsed time from a required reference as a `timedelta`.
+        Return elapsed time as a `timedelta`.
+
+        Without a reference, a day is 24 hours and a week is seven days.
+        Supply `relative_to` when the span has nonzero months or years.
 
         `relative_to` accepts a `date` or a `datetime`. A `datetime` can be
         naive or use `datetime.timezone` or a named `zoneinfo.ZoneInfo`.
@@ -99,17 +116,21 @@ class CalendarSpan:
         Raises
         ------
         TypeError
-            If `relative_to` is neither a `date` nor a `datetime`, or has unsupported `tzinfo`.
+            If a supplied reference has an unsupported type or `tzinfo`.
+        CalendarUnitError
+            If the span has nonzero months or years and no reference was supplied.
         ValueError
             If the `ZoneInfo` key is missing or unrecognized, or the reference or
-            resulting date and time is outside the supported range.
+            result is out of range.
 
         Examples
         --------
         ```python
-        from datetime import date
+        from datetime import date, timedelta
 
         from chronosapien import CalendarSpan
+
+        assert CalendarSpan("1d").to_timedelta() == timedelta(hours=24)
 
         month = CalendarSpan("1mo")
         # January 1 to February 1 is 31 days.
@@ -119,24 +140,46 @@ class CalendarSpan:
         ```
         """
 
-    def equivalent_to(self, other: CalendarSpan, /, *, relative_to: date) -> bool:
+    def total(
+        self,
+        unit: Literal[
+            "year",
+            "month",
+            "week",
+            "day",
+            "hour",
+            "minute",
+            "second",
+            "millisecond",
+            "microsecond",
+            "nanosecond",
+        ],
+        /,
+        *,
+        relative_to: date | None = None,
+    ) -> float:
         """
-        Return whether both spans have the same elapsed time at nanosecond precision.
+        Return the span as a possibly fractional number of the given unit.
 
-        Compare with another `CalendarSpan`, using `relative_to` as the starting
-        point for both. Pass a `date` or a `datetime`. A `datetime` may be naive,
-        have a fixed offset from `datetime.timezone`, or use a named
-        `zoneinfo.ZoneInfo`. Named zones account for offset transitions.
-        Fixed offsets are truncated toward zero to whole seconds.
+        Without a reference, a day is 24 hours and a week is seven days.
+        Supply `relative_to` when the span has nonzero months or years, or
+        when `unit` is `"month"` or `"year"`. The reference can be a `date` or
+        a `datetime`. A `datetime` can be naive or use `datetime.timezone` or
+        a named `zoneinfo.ZoneInfo`. Named zones account for offset transitions.
+        Fractional seconds in fixed offsets are truncated toward zero.
 
         Raises
         ------
         TypeError
-            If `other` is not a `CalendarSpan`, `relative_to` is neither a `date` nor a
-            `datetime`, or `relative_to` has unsupported `tzinfo`.
+            If `unit` is not a string or the reference has an unsupported type or `tzinfo`.
+        InvalidUnitError
+            If `unit` is an unknown unit name.
+        CalendarUnitError
+            If the span has nonzero months or years or the target is one of those
+            units, and no reference was supplied.
         ValueError
             If the `ZoneInfo` key is missing or unrecognized, or the reference or
-            either resulting date and time is outside the supported range.
+            result is out of range.
 
         Examples
         --------
@@ -144,6 +187,46 @@ class CalendarSpan:
         from datetime import date
 
         from chronosapien import CalendarSpan
+
+        assert CalendarSpan("90m").total("hour") == 1.5
+        assert CalendarSpan("36h").total("day") == 1.5
+        assert CalendarSpan("1mo").total("day", relative_to=date(2026, 2, 1)) == 28.0
+        ```
+        """
+
+    def equivalent_to(
+        self, other: CalendarSpan, /, *, relative_to: date | None = None
+    ) -> bool:
+        """
+        Return whether both spans have the same elapsed time at nanosecond precision.
+
+        Supply `relative_to` as the starting point for both spans when either has
+        nonzero months or years. Without a reference, a day is 24 hours and a week
+        is seven days. A `datetime` may be naive,
+        have a fixed offset from `datetime.timezone`, or use a named
+        `zoneinfo.ZoneInfo`. Named zones account for offset transitions.
+        Fixed offsets are truncated toward zero to whole seconds.
+
+        Raises
+        ------
+        TypeError
+            If `other` is not a `CalendarSpan` or the reference has an unsupported
+            type or `tzinfo`.
+        CalendarUnitError
+            If either span has nonzero months or years and no reference was supplied.
+        ValueError
+            If the `ZoneInfo` key is missing or unrecognized, or the reference or
+            either result is out of range.
+
+        Examples
+        --------
+        ```python
+        from datetime import date
+
+        from chronosapien import CalendarSpan
+
+        assert CalendarSpan("1h").equivalent_to(CalendarSpan("60m"))
+        assert CalendarSpan("1w").equivalent_to(CalendarSpan("168h"))
 
         month, days = CalendarSpan("1mo"), CalendarSpan("28d")
         # From February 1, both spans reach March 1.
@@ -343,8 +426,8 @@ class CalendarSpan:
         The comparison keeps each value in its stored unit, following
         [Jiff's fieldwise equality](https://docs.rs/jiff/latest/jiff/struct.Span.html#method.fieldwise).
 
-        To compare elapsed time, call `span.equivalent_to(other, relative_to=reference)`
-        with a reference `date` or `datetime`.
+        To compare elapsed time, call `span.equivalent_to(other)` and supply
+        `relative_to` when either span has nonzero months or years.
 
         Examples
         --------

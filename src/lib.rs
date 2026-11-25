@@ -14,7 +14,7 @@ mod chronosapien {
     use std::hash::{Hash, Hasher};
 
     use jiff::civil::{Date, DateTime};
-    use jiff::{SignedDuration, Span, SpanRelativeTo, Unit, ZonedDateTime};
+    use jiff::{SignedDuration, Span, SpanRelativeTo, SpanRound, Unit, ZonedDateTime};
     use pyo3::exceptions::{PyOverflowError, PyTypeError, PyValueError};
     use pyo3::prelude::*;
     use pyo3::sync::PyOnceLock;
@@ -101,20 +101,44 @@ mod chronosapien {
         // https://tc39.es/proposal-temporal/#sec-temporal.duration.prototype.total
         #[pyo3(signature = (unit, /, *, relative_to=None))]
         fn total(&self, unit: &str, relative_to: Option<&Bound<'_, PyDate>>) -> PyResult<f64> {
-            let unit = match unit {
-                "year" => Unit::Year,
-                "month" => Unit::Month,
-                "week" => Unit::Week,
-                "day" => Unit::Day,
-                "hour" => Unit::Hour,
-                "minute" => Unit::Minute,
-                "second" => Unit::Second,
-                "millisecond" => Unit::Millisecond,
-                "microsecond" => Unit::Microsecond,
-                "nanosecond" => Unit::Nanosecond,
-                _ => return Err(InvalidUnitError::new_err(format!("unknown unit: {unit:?}"))),
-            };
+            let unit = parse_unit(unit)?;
             with_span_reference(relative_to, |reference| self.span.total((unit, reference)))
+        }
+
+        // Jiff's Span::round and Temporal's Duration.round default to rounding
+        // ties away from zero. Jiff's marker also supports unanchored weeks.
+        // https://docs.rs/jiff/latest/jiff/struct.Span.html#method.round
+        // https://tc39.es/proposal-temporal/#sec-temporal.duration.prototype.round
+        #[pyo3(signature = (*, largest, smallest="nanosecond", relative_to=None))]
+        fn round(
+            &self,
+            largest: &str,
+            smallest: &str,
+            relative_to: Option<&Bound<'_, PyDate>>,
+        ) -> PyResult<Self> {
+            let largest = parse_unit(largest)?;
+            let smallest = parse_unit(smallest)?;
+            if largest < smallest {
+                return Err(InvalidUnitError::new_err(
+                    "largest must be at least as large as smallest.",
+                ));
+            }
+
+            let options = SpanRound::new().largest(largest).smallest(smallest);
+            let span = if relative_to.is_some() {
+                with_span_reference(relative_to, |reference| {
+                    self.span.round(options.relative(reference))
+                })?
+            } else {
+                if largest >= Unit::Month
+                    || self.span.get_years() != 0
+                    || self.span.get_months() != 0
+                {
+                    return Err(missing_span_reference());
+                }
+                self.span.round(options.days_are_24_hours())?
+            };
+            Ok(Self { span })
         }
 
         // Like Temporal's Duration.compare, compare unanchored days as 24 hours.
@@ -257,16 +281,36 @@ mod chronosapien {
         }
     }
 
+    fn parse_unit(unit: &str) -> PyResult<Unit> {
+        let unit = match unit {
+            "year" => Unit::Year,
+            "month" => Unit::Month,
+            "week" => Unit::Week,
+            "day" => Unit::Day,
+            "hour" => Unit::Hour,
+            "minute" => Unit::Minute,
+            "second" => Unit::Second,
+            "millisecond" => Unit::Millisecond,
+            "microsecond" => Unit::Microsecond,
+            "nanosecond" => Unit::Nanosecond,
+            _ => return Err(InvalidUnitError::new_err(format!("unknown unit: {unit:?}"))),
+        };
+        Ok(unit)
+    }
+
+    fn missing_span_reference() -> PyErr {
+        CalendarUnitError::new_err(
+            "relative_to is required for years or months. Pass a date or datetime.",
+        )
+    }
+
     fn with_span_reference<T>(
         relative_to: Option<&Bound<'_, PyDate>>,
         operation: impl FnOnce(SpanRelativeTo<'_>) -> Result<T, jiff::Error>,
     ) -> PyResult<T> {
         let Some(relative_to) = relative_to else {
-            return operation(SpanRelativeTo::days_are_24_hours()).map_err(|_| {
-                CalendarUnitError::new_err(
-                    "relative_to is required for years or months. Pass a date or datetime.",
-                )
-            });
+            return operation(SpanRelativeTo::days_are_24_hours())
+                .map_err(|_| missing_span_reference());
         };
         let result = if let Ok(datetime) = relative_to.cast::<PyDateTime>() {
             match ReferenceDateTime::from_python(datetime)? {

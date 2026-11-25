@@ -1,7 +1,7 @@
 """Parse fixed durations and calendar spans using Jiff."""
 
 from datetime import date, datetime, timedelta
-from typing import Final, Literal, final
+from typing import Final, Literal, TypeAlias, final
 
 __all__: Final = (
     "CalendarSpan",
@@ -12,6 +12,19 @@ __all__: Final = (
     "duration",
 )
 
+SpanUnit: TypeAlias = Literal[
+    "year",
+    "month",
+    "week",
+    "day",
+    "hour",
+    "minute",
+    "second",
+    "millisecond",
+    "microsecond",
+    "nanosecond",
+]
+
 class ChronosapienError(Exception):
     """Base class for Chronosapien's custom exceptions."""
 
@@ -19,7 +32,7 @@ class CalendarUnitError(ChronosapienError):
     """A year or month requires a reference date and none was supplied."""
 
 class InvalidUnitError(ChronosapienError):
-    """An unknown unit was passed to `CalendarSpan.total()`."""
+    """An unknown unit name or invalid ordering of rounding units."""
 
 class SpanParseError(ChronosapienError):
     """Invalid span text or a component outside its supported range."""
@@ -140,27 +153,11 @@ class CalendarSpan:
         ```
         """
 
-    def total(
-        self,
-        unit: Literal[
-            "year",
-            "month",
-            "week",
-            "day",
-            "hour",
-            "minute",
-            "second",
-            "millisecond",
-            "microsecond",
-            "nanosecond",
-        ],
-        /,
-        *,
-        relative_to: date | None = None,
-    ) -> float:
+    def total(self, unit: SpanUnit, /, *, relative_to: date | None = None) -> float:
         """
         Return the span as a possibly fractional number of the given unit.
 
+        `unit` is a singular unit name from `"nanosecond"` through `"year"`.
         Without a reference, a day is 24 hours and a week is seven days.
         Supply `relative_to` when the span has nonzero months or years, or
         when `unit` is `"month"` or `"year"`. The reference can be a `date` or
@@ -191,6 +188,52 @@ class CalendarSpan:
         assert CalendarSpan("90m").total("hour") == 1.5
         assert CalendarSpan("36h").total("day") == 1.5
         assert CalendarSpan("1mo").total("day", relative_to=date(2026, 2, 1)) == 28.0
+        ```
+        """
+
+    def round(
+        self,
+        *,
+        largest: SpanUnit,
+        smallest: SpanUnit = "nanosecond",
+        relative_to: date | None = None,
+    ) -> CalendarSpan:
+        """
+        Return a new span rounded and balanced between `largest` and `smallest`.
+
+        Both bounds take singular unit names from `"nanosecond"` through `"year"`.
+        `largest` caps the units in the result. The default `smallest` preserves
+        nanosecond precision. A coarser `smallest` rounds to the nearest unit,
+        with ties away from zero.
+
+        Without a reference, a day is 24 hours and a week is seven days.
+        Supply `relative_to` when the span has nonzero months or years, or when
+        either bound is `"month"` or `"year"`. The reference can be a `date`, a
+        naive `datetime`, or a `datetime` with `datetime.timezone` or a named
+        `zoneinfo.ZoneInfo`. Named zones account for offset transitions.
+        Fractional seconds in fixed offsets are truncated toward zero.
+
+        Raises
+        ------
+        TypeError
+            If either bound is not a string or the reference has an unsupported
+            type or `tzinfo`.
+        InvalidUnitError
+            If a unit name is unknown or `largest` is smaller than `smallest`.
+        CalendarUnitError
+            If months or years are involved and no reference was supplied.
+        ValueError
+            If the `ZoneInfo` key is missing or unrecognized, or the reference
+            or result is out of range.
+
+        Examples
+        --------
+        ```python
+        from chronosapien import CalendarSpan
+
+        span = CalendarSpan("119m 31s")
+        assert span.round(largest="hour") == CalendarSpan("1h 59m 31s")
+        assert span.round(largest="hour", smallest="minute") == CalendarSpan("2h")
         ```
         """
 

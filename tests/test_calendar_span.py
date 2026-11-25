@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta, timezone, tzinfo
+from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pytest
@@ -114,6 +115,44 @@ def test_total_preserves_fractional_microseconds() -> None:
     assert CalendarSpan("-1500ns").total("microsecond") == -1.5
 
 
+def test_round_preserves_nanoseconds_by_default() -> None:
+    result = CalendarSpan("90m 1ns").round(largest="hour")
+
+    assert result == CalendarSpan("1h 30m 1ns")
+
+
+@pytest.mark.parametrize(("text", "expected"), [("90m", "2h"), ("-90m", "-2h")])
+def test_round_ties_away_from_zero(text: str, expected: str) -> None:
+    assert CalendarSpan(text).round(largest="hour", smallest="hour") == CalendarSpan(
+        expected
+    )
+
+
+def test_round_rejects_reversed_units() -> None:
+    with pytest.raises(InvalidUnitError) as error:
+        _ = CalendarSpan("1h").round(largest="minute", smallest="hour")
+    assert str(error.value) == "largest must be at least as large as smallest."
+
+
+@pytest.mark.parametrize("unit", ["month", "year"])
+def test_round_requires_a_reference_for_months_and_years(
+    unit: Literal["month", "year"],
+) -> None:
+    expected = "relative_to is required for years or months. Pass a date or datetime."
+    with pytest.raises(CalendarUnitError) as error:
+        _ = CalendarSpan(f"1 {unit}").round(largest="hour")
+    assert str(error.value) == expected
+
+    with pytest.raises(CalendarUnitError) as error:
+        _ = CalendarSpan("24h").round(largest=unit)
+    assert str(error.value) == expected
+
+
+def test_round_out_of_range_without_a_reference() -> None:
+    with pytest.raises(ValueError, match="nanosecond"):
+        _ = CalendarSpan("200000d").round(largest="nanosecond")
+
+
 @pytest.mark.parametrize(
     "zone",
     [None, timezone(timedelta(hours=5, minutes=30))],
@@ -150,6 +189,11 @@ def test_spring_dst_transition_makes_calendar_day_23_hours() -> None:
     assert calendar_day.equivalent_to(CalendarSpan("23h"), relative_to=midnight_before)
     assert calendar_day.total("hour", relative_to=midnight_before) == 23.0
     assert CalendarSpan("23h").total("day", relative_to=midnight_before) == 1.0
+    assert CalendarSpan("23h").round(largest="day") == CalendarSpan("23h")
+    assert (
+        CalendarSpan("23h").round(largest="day", relative_to=midnight_before)
+        == calendar_day
+    )
     assert duration("1d", relative_to=midnight_before) == timedelta(hours=23)
     assert duration("1d", relative_to=None) == timedelta(hours=24)
 

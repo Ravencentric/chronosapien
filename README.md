@@ -74,6 +74,8 @@ Building from source requires the [Rust toolchain](https://rustup.rs/) and [Pyth
 
 This project is essentially a thin wrapper around the excellent [`Jiff`](https://crates.io/crates/jiff) crate by [BurntSushi](https://github.com/BurntSushi/jiff).
 
+Named after Chronosapiens, a sapient alien life form that possesses the ability to control time.
+
 ## License
 
 Distributed under the [Mozilla Public License 2.0](https://www.mozilla.org/MPL/2.0/). See [LICENSE](https://github.com/Ravencentric/chronosapien/blob/main/LICENSE) for more information.

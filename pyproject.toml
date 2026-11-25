@@ -15,8 +15,9 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+  "Programming Language :: Python :: Free Threading",
   "Programming Language :: Python :: Implementation :: CPython",
-  "Programming Language :: Python :: Implementation :: PyPy",
   "Programming Language :: Rust",
   "Typing :: Typed",
 ]
@@ -27,15 +28,23 @@ Documentation = "https://ravencentri.cc/chronosapien/"
 Repository = "https://github.com/Ravencentric/chronosapien"
 
 [dependency-groups]
-dev = [{ include-group = "docs" }]
+dev = [
+  { include-group = "check" },
+  { include-group = "docs" },
+  { include-group = "test" },
+]
 check = [
   "pyrefly>=1.5",
   "ruff>=0.17",
+  { include-group = "test" },
 ]
 docs = [
-  "griffe>=2.4",
   "mkdocstrings-python>=2.0",
   "zensical>=0.1",
+]
+test = [
+  "pytest>=9.2",
+  "tzdata>=2026.6",
 ]
 
 [build-system]
@@ -46,6 +55,9 @@ build-backend = "maturin"
 build = ["cp311-*", "cp315t-*"]
 archs = "native"
 build-frontend = "build[uv]"
+test-groups = ["test"]
+test-sources = ["pyproject.toml", "tests"]
+test-command = "pytest"
 
 [tool.cibuildwheel.linux]
 before-all = "curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none"
@@ -63,6 +75,21 @@ audit-command = ""
 [tool.maturin]
 editable-profile = "dev"
 locked = true
+
+[tool.pyrefly]
+preset = "all"
+python-platform = "all"
+project-includes = [
+  "chronosapien.pyi",
+  "tests/**/*.py",
+]
+
+[tool.pytest]
+addopts = ["-ra", "--showlocals"]
+filterwarnings = ["error"]
+log_cli_level = "INFO"
+strict = true
+testpaths = ["tests"]
 
 [tool.ruff.lint.per-file-ignores]
 "chronosapien.pyi" = ["PYI021", "PYI029"]

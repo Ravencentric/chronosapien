@@ -18,17 +18,25 @@ source = { editable = "." }
 [package.dev-dependencies]
 check = [
     { name = "pyrefly" },
+    { name = "pytest" },
     { name = "ruff" },
+    { name = "tzdata" },
 ]
 dev = [
-    { name = "griffe" },
     { name = "mkdocstrings-python" },
+    { name = "pyrefly" },
+    { name = "pytest" },
+    { name = "ruff" },
+    { name = "tzdata" },
     { name = "zensical" },
 ]
 docs = [
-    { name = "griffe" },
     { name = "mkdocstrings-python" },
     { name = "zensical" },
+]
+test = [
+    { name = "pytest" },
+    { name = "tzdata" },
 ]
 
 [package.metadata]
@@ -36,17 +44,25 @@ docs = [
 [package.metadata.requires-dev]
 check = [
     { name = "pyrefly", specifier = ">=1.5" },
+    { name = "pytest", specifier = ">=9.2" },
     { name = "ruff", specifier = ">=0.17" },
+    { name = "tzdata", specifier = ">=2026.6" },
 ]
 dev = [
-    { name = "griffe", specifier = ">=2.4" },
     { name = "mkdocstrings-python", specifier = ">=2.0" },
+    { name = "pyrefly", specifier = ">=1.5" },
+    { name = "pytest", specifier = ">=9.2" },
+    { name = "ruff", specifier = ">=0.17" },
+    { name = "tzdata", specifier = ">=2026.6" },
     { name = "zensical", specifier = ">=0.1" },
 ]
 docs = [
-    { name = "griffe", specifier = ">=2.4" },
     { name = "mkdocstrings-python", specifier = ">=2.0" },
     { name = "zensical", specifier = ">=0.1" },
+]
+test = [
+    { name = "pytest", specifier = ">=9.2" },
+    { name = "tzdata", specifier = ">=2026.6" },
 ]
 
 [[package]]
@@ -80,38 +96,21 @@ wheels = [
 ]
 
 [[package]]
-name = "griffe"
-version = "2.4.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "griffecli" },
-    { name = "griffelib" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/33/a4/be055b9ced02e39ac0ab85960e0ed3d8c6017c03e90965e77ff276684418/griffe-2.4.1.tar.gz", hash = "sha256:766123e26ec35b2ead63202e9e43ec309d876085d571b7df288256cd6fe4a3ef", size = 450805, upload-time = "2026-10-22T11:20:02.532Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/29/93/67a1814b4b13e9a5cc02510dbfa1d3937603140192a701c96d861b272611/griffe-2.4.1-py3-none-any.whl", hash = "sha256:ca58ccdb1d8590ad062fad837a875dd704f94acf7a0104795a098a991ceaf728", size = 5100, upload-time = "2026-10-22T11:19:58.365Z" },
-]
-
-[[package]]
-name = "griffecli"
-version = "2.4.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "colorama" },
-    { name = "griffelib" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/c9/8e/d3130e17ae27c900f8f76c96ceb2f02edfe0c7db0366b49e033f81ff81d7/griffecli-2.4.1.tar.gz", hash = "sha256:6db9acad984990b08c833ab5ec73d5a604e317b2290074d04c91ca9e52d35a7b", size = 61762, upload-time = "2026-10-22T11:20:01.054Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3f/dc/5cdbbbfd1a9e8c0e9b6b8b6e6d839e67f82cb138b77cf74856e5b80527de/griffecli-2.4.1-py3-none-any.whl", hash = "sha256:1678938e7b75a0aa34d3e408d550707a192f5297c3005aa0f92660648c30bc0a", size = 11774, upload-time = "2026-10-22T11:19:57.134Z" },
-]
-
-[[package]]
 name = "griffelib"
 version = "2.4.1"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/36/e2/0f5d8ed08766bc6dcd3eebf5a6623d83cbca33a6e4c90aef57156ce745ad/griffelib-2.4.1.tar.gz", hash = "sha256:40c028dd2e623f464423f0e11e3c553158f1cf4f1368239a370534d73e1407ff", size = 245153, upload-time = "2026-10-22T11:20:03.705Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/de/02/1156d5f5307f573b901b14373848b84e69ca6cab09169b8cc97d16a181f9/griffelib-2.4.1-py3-none-any.whl", hash = "sha256:76bc562f936ad1ce198d2cf6d0731bd5c92a7d934b69ef828ef22ee0ffdb62ce", size = 172983, upload-time = "2026-10-22T11:19:59.843Z" },
+]
+
+[[package]]
+name = "iniconfig"
+version = "2.3.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/01/e1/2069291243c926a2ff1cd706c7f3eeb9b62144bf60f77c9fb9ff2fb26bd3/iniconfig-2.3.1.tar.gz", hash = "sha256:67f4b9c50da0dedf52af349e7749a80a9057a5031199791b906c3bb3ae878960", size = 21209, upload-time = "2026-10-06T22:48:38.076Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/56/43/4ca9e49d27a1fcf6bece6f6aec0ea46bb9112489b93d4b688fb415457bdb/iniconfig-2.3.1-py3-none-any.whl", hash = "sha256:9121e2c1fdb355232495be3194c8dfe87ccc2d5dee45947b78e68f499790d7a7", size = 7552, upload-time = "2026-10-06T22:48:36.959Z" },
 ]
 
 [[package]]
@@ -384,6 +383,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pluggy"
+version = "1.7.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/db/7fc19e6f2dc92a966727031389fc2e08b558f0f25eb7403c1119ad4713cd/pluggy-1.7.0.tar.gz", hash = "sha256:d1eaa46ebb595891b860ab086b4d09c8588af65ebd4361b8e8f4bb8920b90ba8", size = 123304, upload-time = "2026-10-15T09:50:58.343Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/40/9e/2b38731e0fc536806f16490e1a12d7f0dc2a1235aa8cc07bcc75416a7daa/pluggy-1.7.0-py3-none-any.whl", hash = "sha256:7dd7b0d8832ba3cb632c306926ded123429211b83641b35dc5c41ad2d34f9bec", size = 27082, upload-time = "2026-10-15T09:50:56.808Z" },
+]
+
+[[package]]
 name = "pygments"
 version = "2.21.0"
 source = { registry = "https://pypi.org/simple" }
@@ -442,6 +450,22 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ea/b7/19b5bb48e7c63c545a928e906feb7054a73e3a47f8311fbb4b324b1f2468/pyrefly-1.5.0-py3-none-win32.whl", hash = "sha256:0c42518c9e51fc8a3b5dd24de4cb75b1f3a01d43367694ac306900a82aaecbc2", size = 16033056, upload-time = "2026-11-19T01:21:07.015Z" },
     { url = "https://files.pythonhosted.org/packages/c4/fe/c6fabbcebd7a53f354a9e0b534fbdfa611e1ea378ddd2ae2e822f3bb25f8/pyrefly-1.5.0-py3-none-win_amd64.whl", hash = "sha256:7ab1c62a16af96b26ec7e9d36a63dd379d685db75c083a68017ec659128a53d7", size = 16475783, upload-time = "2026-11-19T01:21:10.593Z" },
     { url = "https://files.pythonhosted.org/packages/0f/4b/359f73e352d205c4665f334614ba4206c003af99b4aa9e0f1cfbe5ad4443/pyrefly-1.5.0-py3-none-win_arm64.whl", hash = "sha256:03981ed2d19ab1be8976bee8f0a492538d8df42c26d154384c3391b54500c4eb", size = 15936966, upload-time = "2026-11-19T01:21:13.713Z" },
+]
+
+[[package]]
+name = "pytest"
+version = "9.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "iniconfig" },
+    { name = "packaging" },
+    { name = "pluggy" },
+    { name = "pygments" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/79/42/bb4641652e58dedeac2ec51abc1f8cae4fee4ec63899a0999016229a0f2a/pytest-9.2.0.tar.gz", hash = "sha256:97c4f3b1f3c7414aa36465e09b8220f1d03627993bd51b1282e193753c80557b", size = 1797555, upload-time = "2026-10-27T21:30:20.728Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/39/1f5d8c8877a0fa327db959c19341d4be61660de1ab6b7391f9eb805bcd67/pytest-9.2.0-py3-none-any.whl", hash = "sha256:07acdcf88ec174f907dc01af70bf52d49b014bbab03faeeade31c96b18c2e588", size = 411776, upload-time = "2026-10-27T21:30:19.131Z" },
 ]
 
 [[package]]

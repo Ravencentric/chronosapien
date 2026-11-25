@@ -147,6 +147,61 @@ class Duration:
         ```
         """
 
+    @staticmethod
+    def between(
+        start: date, end: date, /, *, largest: SpanUnit | None = None
+    ) -> Duration:
+        """
+        Return the span from `start` to `end`.
+
+        Both endpoints must be dates or both must be datetimes. Datetimes
+        must both be naive or both be aware. Aware datetimes can use
+        `datetime.timezone` or a named `zoneinfo.ZoneInfo`. Named zones account
+        for offset transitions. Fractional seconds in fixed offsets are
+        truncated toward zero.
+
+        `largest` sets the largest unit in the result. It accepts singular
+        unit names from `"nanosecond"` through `"year"`. For dates, the
+        largest unit must be `"day"`, `"week"`, `"month"`, or `"year"`.
+        When `largest` is omitted, it defaults to `"day"` for dates and
+        naive datetimes, and `"hour"` for aware datetimes. For a nonzero
+        difference with `largest` set to `"day"` or greater, aware datetimes
+        must have matching time zones.
+
+        The result is negative when `end` precedes `start`. Calendar spans
+        are calculated relative to `start`, so reversing the endpoints can
+        yield different components around month ends or offset transitions.
+
+        Raises
+        ------
+        TypeError
+            If the endpoints have incompatible types or awareness, or use an
+            unsupported `tzinfo`.
+        InvalidUnitError
+            If `largest` is an unknown unit name.
+        ValueError
+            If `largest` is a time unit for dates, the time zones are incompatible
+            for calendar units, a `ZoneInfo` key is missing or unrecognized, or
+            the result is outside the supported range.
+
+        Examples
+        --------
+        ```python
+        from datetime import date, datetime
+
+        from chronosapien import Duration
+
+        start, end = date(2025, 1, 30), date(2025, 3, 2)
+        assert Duration.between(start, end) == Duration("31d")
+        assert Duration.between(start, end, largest="month") == Duration("1mo 2d")
+        assert Duration.between(end, start, largest="month") == Duration("-1mo 3d")
+
+        start_time = datetime(2025, 1, 30, 9)
+        end_time = datetime(2025, 1, 31, 10, 30)
+        assert Duration.between(start_time, end_time, largest="hour") == Duration("25h 30m")
+        ```
+        """
+
     def to_timedelta(self, *, relative_to: date | None = None) -> timedelta:
         """
         Return elapsed time as a `timedelta`.

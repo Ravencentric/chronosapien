@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone, tzinfo
+from datetime import UTC, date, datetime, timedelta, timezone, tzinfo
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -402,6 +402,78 @@ def test_from_timedelta_round_trips(delta: timedelta) -> None:
 def test_from_timedelta_rejects_out_of_range_values(delta: timedelta) -> None:
     with pytest.raises(OverflowError, match="seconds"):
         _ = Duration.from_timedelta(delta)
+
+
+def test_between_dates_supports_calendar_units() -> None:
+    start = date(2025, 1, 30)
+    end = date(2025, 3, 2)
+
+    assert Duration.between(start, end) == Duration("31d")
+    assert Duration.between(start, end, largest="month") == Duration("1mo 2d")
+    assert Duration.between(end, start, largest="month") == Duration("-1mo 3d")
+    assert Duration.between(end, start) == Duration("-31d")
+    assert Duration.between(start, start).is_zero()
+
+
+def test_between_naive_datetimes_preserves_subseconds() -> None:
+    start = datetime(2025, 1, 30, 9)
+    end = datetime(2025, 1, 31, 10, 30, 0, 123456)
+
+    assert Duration.between(start, end) == Duration("1d 1h 30m 123ms 456us")
+    assert Duration.between(start, end, largest="hour") == Duration(
+        "25h 30m 123ms 456us"
+    )
+    assert Duration.between(end, start, largest="hour") == Duration(
+        "-25h 30m 123ms 456us"
+    )
+
+
+def test_between_aware_datetimes_accounts_for_dst() -> None:
+    try:
+        zone = ZoneInfo("America/New_York")
+    except ZoneInfoNotFoundError:
+        pytest.skip("America/New_York time zone data is unavailable")
+
+    start = datetime(2024, 3, 10, tzinfo=zone)
+    end = datetime(2024, 3, 11, tzinfo=zone)
+
+    assert Duration.between(start, end) == Duration("23h")
+    assert Duration.between(start, end, largest="day") == Duration("1d")
+
+    first = datetime(2024, 11, 3, 1, 30, tzinfo=zone, fold=0)
+    second = datetime(2024, 11, 3, 1, 30, tzinfo=zone, fold=1)
+    assert Duration.between(first, second) == Duration("1h")
+
+
+def test_between_aware_datetimes_in_different_time_zones() -> None:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    end = datetime(2024, 1, 1, 5, 30, tzinfo=timezone(timedelta(hours=5, minutes=30)))
+
+    assert Duration.between(start, end).is_zero()
+    assert Duration.between(start, end, largest="day").is_zero()
+    end += timedelta(hours=1)
+    assert Duration.between(start, end) == Duration("1h")
+    with pytest.raises(ValueError, match="(?i)time.?zone"):
+        _ = Duration.between(start, end, largest="day")
+
+
+def test_between_rejects_incompatible_endpoints_and_units() -> None:
+    day = date(2025, 1, 1)
+    naive = datetime(2025, 1, 1)
+    aware = datetime(2025, 1, 1, tzinfo=UTC)
+
+    with pytest.raises(TypeError, match="dates or both be datetimes"):
+        _ = Duration.between(day, naive)
+    with pytest.raises(TypeError, match="naive or both be aware"):
+        _ = Duration.between(naive, aware)
+    with pytest.raises(InvalidUnitError):
+        _ = Duration.between(day, day, largest="fortnight")  # pyrefly: ignore[bad-argument-type]
+    with pytest.raises(ValueError):
+        _ = Duration.between(day, day, largest="hour")
+    with pytest.raises(ValueError, match="nanosecond"):
+        _ = Duration.between(
+            datetime(1800, 1, 1), datetime(2200, 1, 1), largest="nanosecond"
+        )
 
 
 def test_spring_dst_transition_makes_calendar_day_23_hours() -> None:

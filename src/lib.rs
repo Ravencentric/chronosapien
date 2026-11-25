@@ -120,6 +120,52 @@ mod chronosapien {
             Ok(Self { span })
         }
 
+        #[staticmethod]
+        #[pyo3(signature = (start, end, /, *, largest=None))]
+        fn between(
+            start: &Bound<'_, PyDate>,
+            end: &Bound<'_, PyDate>,
+            largest: Option<&str>,
+        ) -> PyResult<Self> {
+            let largest = largest.map(parse_unit).transpose()?;
+            let (start, end) = match (start.cast::<PyDateTime>(), end.cast::<PyDateTime>()) {
+                (Ok(start), Ok(end)) => (start, end),
+                (Err(_), Err(_)) => {
+                    let start = start.extract::<Date>()?;
+                    let end = end.extract::<Date>()?;
+                    let span = match largest {
+                        Some(largest) => start.until((largest, end)),
+                        None => start.until(end),
+                    }?;
+                    return Ok(Self { span });
+                }
+                _ => {
+                    return Err(PyTypeError::new_err(
+                        "start and end must both be dates or both be datetimes",
+                    ));
+                }
+            };
+            let span = match (
+                ReferenceDateTime::from_python(start)?,
+                ReferenceDateTime::from_python(end)?,
+            ) {
+                (ReferenceDateTime::Naive(start), ReferenceDateTime::Naive(end)) => match largest {
+                    Some(largest) => start.until((largest, end))?,
+                    None => start.until(end)?,
+                },
+                (ReferenceDateTime::Aware(start), ReferenceDateTime::Aware(end)) => match largest {
+                    Some(largest) => start.until((largest, &end))?,
+                    None => start.until(&end)?,
+                },
+                _ => {
+                    return Err(PyTypeError::new_err(
+                        "start and end must both be naive or both be aware datetimes",
+                    ));
+                }
+            };
+            Ok(Self { span })
+        }
+
         // Jiff's Span::to_duration accepts a date or the 24-hour-day marker.
         // Temporal's Duration.total also defaults to 24-hour days.
         // https://docs.rs/jiff/latest/jiff/struct.Span.html#method.to_duration

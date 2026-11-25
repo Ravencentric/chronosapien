@@ -1,7 +1,8 @@
 # chronosapien
 
 `chronosapien` parses human-readable and [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601#Durations)
-duration (and duration strings only) strings using [Jiff](https://docs.rs/jiff/latest/jiff/).
+duration strings (and duration strings only) using [Jiff](https://docs.rs/jiff/latest/jiff/).
+It is neither a general datetime parser nor a datetime library.
 
 ## Usage
 

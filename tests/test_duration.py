@@ -337,6 +337,37 @@ def test_round_out_of_range_without_a_reference() -> None:
         _ = Duration("200000d").round(largest="nanosecond")
 
 
+def test_span_arithmetic_uses_fixed_days_and_weeks_without_a_reference() -> None:
+    week = Duration("1w")
+
+    assert week.plus(Duration("6d 24h")) == Duration("2w")
+    assert week.minus(Duration("169h")) == Duration("-1h")
+
+
+@pytest.mark.parametrize(("left", "right"), [("1mo", "1h"), ("1h", "1y")])
+def test_span_arithmetic_requires_a_reference_for_months_and_years(
+    left: str, right: str
+) -> None:
+    first, second = Duration(left), Duration(right)
+
+    with pytest.raises(CalendarUnitError, match="relative_to is required"):
+        _ = first.plus(second)
+    with pytest.raises(CalendarUnitError, match="relative_to is required"):
+        _ = first.minus(second)
+
+
+def test_span_arithmetic_accepts_a_date_reference() -> None:
+    month, days = Duration("1mo"), Duration("28d")
+
+    assert month.minus(days, relative_to=date(2025, 2, 1)).is_zero()
+    assert month.minus(days, relative_to=date(2025, 1, 1)) == Duration("3d")
+
+
+def test_span_arithmetic_reports_an_out_of_range_result() -> None:
+    with pytest.raises(ValueError, match="hour"):
+        _ = Duration("175307616h").plus(Duration("1h"))
+
+
 @pytest.mark.parametrize(
     "zone",
     [None, timezone(timedelta(hours=5, minutes=30))],
@@ -387,6 +418,9 @@ def test_spring_dst_transition_makes_calendar_day_23_hours() -> None:
     assert calendar_day.to_timedelta(relative_to=midnight_before) == timedelta(hours=23)
     assert fixed_day.add_to(midnight_before) == datetime(2024, 3, 11, 1, tzinfo=zone)
     assert calendar_day.equivalent_to(Duration("23h"), relative_to=midnight_before)
+    assert calendar_day.minus(Duration("23h"), relative_to=midnight_before).is_zero()
+    extended_day = calendar_day.plus(Duration("1h"), relative_to=midnight_before)
+    assert extended_day.add_to(midnight_before) == datetime(2024, 3, 11, 1, tzinfo=zone)
     assert calendar_day.total("hour", relative_to=midnight_before) == 23.0
     assert Duration("23h").total("day", relative_to=midnight_before) == 1.0
     assert Duration("23h").round(largest="day") == Duration("23h")

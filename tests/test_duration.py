@@ -44,7 +44,7 @@ def test_span_formats() -> None:
 def test_verbose_friendly_output_round_trips() -> None:
     span = Duration("1h 30m ago")
 
-    text = span.to_friendly(designator="verbose")
+    text = span.to_friendly(designator="verbose", spacing="designators", comma=True)
 
     assert text == "1 hour, 30 minutes ago"
     assert Duration(text) == span
@@ -55,7 +55,7 @@ def test_friendly_output_can_override_commas() -> None:
 
     assert span.to_friendly(comma=None) == "1h 30m"
     assert span.to_friendly(comma=True) == "1h, 30m"
-    assert span.to_friendly(designator="verbose", comma=False) == "1 hour 30 minutes"
+    assert span.to_friendly(designator="verbose", comma=False) == "1hour 30minutes"
     assert Duration("1y 2mo").to_friendly(designator="short", comma=True) == "1yr, 2mos"
 
 
@@ -64,9 +64,9 @@ def test_friendly_output_can_override_spacing() -> None:
 
     assert span.to_friendly(spacing="none") == "1h30m"
     assert span.to_friendly(spacing="none", comma=True) == "1h,30m"
-    assert span.to_friendly(designator="verbose", spacing="units") == "1hour, 30minutes"
-    assert (
-        span.to_friendly(designator="verbose", spacing="auto") == "1 hour, 30 minutes"
+    assert span.to_friendly(designator="verbose") == "1hour 30minutes"
+    assert span.to_friendly(designator="verbose", spacing="designators") == (
+        "1 hour 30 minutes"
     )
 
 
@@ -95,7 +95,7 @@ def test_hhmmss_with_zero_time_fields() -> None:
 def test_hhmmss_combines_with_designator_and_comma() -> None:
     span = Duration("1d 2h")
 
-    assert span.to_friendly(designator="verbose", hhmmss=True) == "1 day, 02:00:00"
+    assert span.to_friendly(designator="verbose", hhmmss=True) == "1day 02:00:00"
     assert span.to_friendly(comma=True, hhmmss=True) == "1d, 02:00:00"
     text = Duration("1y 2mo 2h").to_friendly(spacing="none", hhmmss=True)
     assert text == "1y2mo 02:00:00"
@@ -122,28 +122,47 @@ def test_friendly_numeric_options_accept_the_maximum() -> None:
     span = Duration("1s")
 
     assert span.to_friendly(fractional="second", precision=9) == "1.000000000s"
-    assert span.to_friendly(padding=20) == "00000000000000000001s"
+    assert DurationFormatter(padding=20).format(span) == "00000000000000000001s"
 
 
-@pytest.mark.parametrize("precision", [-1, 10, 2**128])
-def test_to_friendly_rejects_out_of_range_precision(precision: int) -> None:
+@pytest.mark.parametrize(
+    ("precision", "error"),
+    [
+        (-1, OverflowError),
+        (10, DurationFormatError),
+        (255, DurationFormatError),
+        (256, OverflowError),
+        (2**128, OverflowError),
+    ],
+)
+def test_to_friendly_rejects_out_of_range_precision(
+    precision: int, error: type[Exception]
+) -> None:
     span = Duration("1s")
-    with pytest.raises(DurationFormatError) as error:
-        _ = span.to_friendly(precision=precision)  # pyrefly: ignore[bad-argument-type]
-    assert str(error.value) == "precision must be between 0 and 9."
+    with pytest.raises(error):
+        _ = span.to_friendly(precision=precision)
 
 
-@pytest.mark.parametrize("padding", [-1, 21, 2**128])
-def test_duration_formatter_rejects_out_of_range_padding(padding: int) -> None:
-    with pytest.raises(DurationFormatError) as error:
-        _ = DurationFormatter(padding=padding)  # pyrefly: ignore[bad-argument-type]
-    assert str(error.value) == "padding must be between 0 and 20."
+@pytest.mark.parametrize(
+    ("padding", "error"),
+    [
+        (-1, OverflowError),
+        (21, DurationFormatError),
+        (255, DurationFormatError),
+        (256, OverflowError),
+        (2**128, OverflowError),
+    ],
+)
+def test_duration_formatter_rejects_out_of_range_padding(
+    padding: int, error: type[Exception]
+) -> None:
+    with pytest.raises(error):
+        _ = DurationFormatter(padding=padding)
 
 
-def test_hhmmss_rejects_a_conflicting_fractional_unit() -> None:
-    with pytest.raises(DurationFormatError) as error:
-        _ = Duration("1h").to_friendly(hhmmss=True, fractional="hour")
-    assert str(error.value) == 'hhmmss=True only supports fractional="second".'
+def test_hhmmss_uses_fractional_seconds() -> None:
+    span = Duration("1h 250ms")
+    assert span.to_friendly(hhmmss=True, fractional="hour") == "01:00:00.25"
 
 
 def test_to_friendly_rejects_an_unknown_designator() -> None:
@@ -198,8 +217,8 @@ def test_duration_formatter_is_immutable() -> None:
 
 def test_duration_formatter_validates_options_at_construction() -> None:
     with pytest.raises(DurationFormatError) as error:
-        _ = DurationFormatter(hhmmss=True, fractional="hour")
-    assert str(error.value) == 'hhmmss=True only supports fractional="second".'
+        _ = DurationFormatter(fractional="day")  # pyrefly: ignore[bad-argument-type]
+    assert str(error.value) == 'unknown fractional unit: "day"'
 
 
 def test_span_equality_and_hash_use_stored_units() -> None:

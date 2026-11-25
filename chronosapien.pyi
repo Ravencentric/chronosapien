@@ -39,7 +39,7 @@ class CalendarUnitError(ChronosapienError):
     """A year or month requires a reference date and none was supplied."""
 
 class DurationFormatError(ChronosapienError):
-    """An unknown, incompatible, or out-of-range duration formatting option."""
+    """An unknown formatting option value or an unsupported precision or padding."""
 
 class InvalidUnitError(ChronosapienError):
     """An unknown unit name or invalid ordering of rounding units."""
@@ -505,13 +505,13 @@ class Duration:
         """Return a human-readable duration string.
 
         `designator` selects the unit labels, such as `1y` for `"compact"`,
-        `1yr` for `"short"`, and `1 year` for `"verbose"`.
+        `1yr` for `"short"`, and `1year` for `"verbose"` with default spacing.
 
         `spacing` controls where spaces appear. `"none"` gives `1h30m`,
         `"units"` gives `1h 30m`, and `"designators"` gives `1 h 30 m`.
-        With `spacing="auto"`, verbose output uses `"designators"` and the
-        other designators use `"units"`. `comma` controls comma separators
-        independently and defaults to using them only for verbose output.
+        The default, `"auto"`, uses Jiff's default spacing between units.
+        Set `comma=True` to add comma separators between units. `False` and
+        `None` both omit commas.
 
         `direction` controls how the sign is displayed. `"sign"` writes a
         leading minus on negative durations, and `"suffix"` writes `ago`
@@ -527,15 +527,18 @@ class Duration:
 
         `fractional` folds smaller units into a decimal, such as `1.5h` for
         `1h 30m` with `fractional="hour"`. Fractional hours and minutes can
-        lose precision even with automatic precision. `hhmmss=True` always
-        uses fractional seconds.
+        lose precision even with automatic precision. `hhmmss=True` uses
+        fractional seconds regardless of `fractional`.
 
-        `precision` sets the number of decimal places from 0 to 9 when
-        fractional output is enabled. `None` uses as many places as the
-        value needs, up to 9. An explicit precision truncates excess digits.
-        `padding` sets the minimum width of the integer part of each unit
-        from 0 to 20, adding leading zeros as needed. With `padding=None`,
-        the `HH:MM:SS` fields use a width of 2 and other fields have no padding.
+        `precision` accepts integers from 0 through 9 and sets the number of
+        decimal places when fractional output is enabled. An explicit precision
+        truncates excess digits. `None` uses as many places as the value needs,
+        up to 9.
+
+        `padding` accepts integers from 0 through 20 and sets the minimum width
+        of the integer part of each unit, adding leading zeros as needed. With
+        `padding=None`, the `HH:MM:SS` fields use a width of 2 and other fields
+        have no padding.
 
         To reuse these options across durations, use
         [`DurationFormatter`][chronosapien.DurationFormatter].
@@ -545,10 +548,9 @@ class Duration:
         TypeError
             If an argument has the wrong type.
         DurationFormatError
-            If `designator`, `spacing`, `direction`, or `fractional` has an
-            unknown value, if `hhmmss=True` is combined with a fractional
-            unit other than seconds, or if `precision` or `padding` is out
-            of range.
+            If the formatter receives an unknown `designator`, `spacing`,
+            `direction`, or `fractional` value, a `precision` above 9, or a
+            `padding` above 20.
 
         Examples
         --------
@@ -557,11 +559,10 @@ class Duration:
 
         assert Duration("P1M2D").to_friendly() == "1mo 2d"
         assert Duration("1y 2mo").to_friendly(designator="short") == "1yr 2mos"
-        assert Duration("1h 30m").to_friendly(designator="verbose") == "1 hour, 30 minutes"
+        assert Duration("1h 30m").to_friendly(designator="verbose", spacing="designators", comma=True) == "1 hour, 30 minutes"
         assert Duration("1h 30m").to_friendly(spacing="designators") == "1 h 30 m"
         assert Duration("-1h").to_friendly(direction="sign") == "-1h"
-        text = Duration("1d 120m").to_friendly(hhmmss=True)
-        assert text == "1d 00:120:00"
+        assert Duration("1d 120m").to_friendly(hhmmss=True) == "1d 00:120:00"
         assert Duration("1h 30m").to_friendly(fractional="hour") == "1.5h"
         assert Duration("1250ms").to_friendly(hhmmss=True, precision=3) == "00:00:01.250"
         ```
@@ -679,9 +680,12 @@ class DurationFormatter:
 
         Raises
         ------
+        TypeError
+            If an argument has the wrong type.
         DurationFormatError
-            If a formatting option is unknown, out of range, or incompatible
-            with another option.
+            If the formatter receives an unknown `designator`, `spacing`,
+            `direction`, or `fractional` value, a `precision` above 9, or a
+            `padding` above 20.
         """
 
     def format(self, duration: Duration, /) -> str:

@@ -260,8 +260,8 @@ mod chronosapien {
             direction: &str,
             hhmmss: bool,
             fractional: Option<&str>,
-            precision: Option<&Bound<'_, PyAny>>,
-            padding: Option<&Bound<'_, PyAny>>,
+            precision: Option<u8>,
+            padding: Option<u8>,
         ) -> PyResult<String> {
             let formatter = DurationFormatter::new(
                 designator, spacing, comma, direction, hhmmss, fractional, precision, padding,
@@ -350,17 +350,13 @@ mod chronosapien {
             direction: &str,
             hhmmss: bool,
             fractional: Option<&str>,
-            precision: Option<&Bound<'_, PyAny>>,
-            padding: Option<&Bound<'_, PyAny>>,
+            precision: Option<u8>,
+            padding: Option<u8>,
         ) -> PyResult<Self> {
-            let (designator, default_spacing, default_comma) = match designator {
-                "compact" => (Designator::Compact, Spacing::BetweenUnits, false),
-                "short" => (Designator::Short, Spacing::BetweenUnits, false),
-                "verbose" => (
-                    Designator::Verbose,
-                    Spacing::BetweenUnitsAndDesignators,
-                    true,
-                ),
+            let designator = match designator {
+                "compact" => Designator::Compact,
+                "short" => Designator::Short,
+                "verbose" => Designator::Verbose,
                 _ => {
                     return Err(DurationFormatError::new_err(format!(
                         "unknown friendly designator: {designator:?}"
@@ -368,10 +364,13 @@ mod chronosapien {
                 }
             };
             let spacing = match spacing {
-                "auto" => default_spacing,
-                "none" => Spacing::None,
-                "units" => Spacing::BetweenUnits,
-                "designators" => Spacing::BetweenUnitsAndDesignators,
+                // map "auto" to None because
+                // an API like `spacing: None | "none" | "units"`
+                // is much more confusing on the Python side.
+                "auto" => None,
+                "none" => Some(Spacing::None),
+                "units" => Some(Spacing::BetweenUnits),
+                "designators" => Some(Spacing::BetweenUnitsAndDesignators),
                 _ => {
                     return Err(DurationFormatError::new_err(format!(
                         "unknown friendly spacing: {spacing:?}"
@@ -391,11 +390,6 @@ mod chronosapien {
                     )));
                 }
             };
-            if hhmmss && !matches!(fractional, None | Some(FractionalUnit::Second)) {
-                return Err(DurationFormatError::new_err(
-                    r#"hhmmss=True only supports fractional="second"."#,
-                ));
-            }
             let direction = match direction {
                 "auto" => Direction::Auto,
                 "sign" => Direction::Sign,
@@ -406,32 +400,37 @@ mod chronosapien {
                     )));
                 }
             };
-            let check_digits =
-                |value: &Bound<'_, PyAny>, max: u8, name: &str| match value.extract::<u8>() {
-                    Ok(digits) if digits <= max => Ok(digits),
-                    Err(err) if !err.is_instance_of::<PyOverflowError>(value.py()) => Err(err),
-                    _ => Err(DurationFormatError::new_err(format!(
-                        "{name} must be between 0 and {max}."
-                    ))),
-                };
-            let precision = precision
-                .map(|value| check_digits(value, 9, "precision"))
-                .transpose()?;
-            let padding = padding
-                .map(|value| check_digits(value, 20, "padding"))
-                .transpose()?;
-            let printer = SpanPrinter::new()
+            let mut printer = SpanPrinter::new()
                 .designator(designator)
-                .spacing(spacing)
-                .comma_after_designator(comma.unwrap_or(default_comma))
                 .hours_minutes_seconds(hhmmss)
                 .direction(direction)
-                .fractional(fractional)
-                .precision(precision);
-            let printer = match padding {
-                Some(padding) => printer.padding(padding),
+                .fractional(fractional);
+            if let Some(spacing) = spacing {
+                printer = printer.spacing(spacing);
+            }
+            if let Some(comma) = comma {
+                printer = printer.comma_after_designator(comma);
+            }
+
+            printer = match precision {
+                Some(p) if p > 9 => {
+                    return Err(DurationFormatError::new_err(format!(
+                        "unsupported friendly precision: {p}. Expected a number between 0 and 9."
+                    )));
+                }
+                p => printer.precision(p),
+            };
+
+            printer = match padding {
+                Some(p) if p > 20 => {
+                    return Err(DurationFormatError::new_err(format!(
+                        "unsupported friendly padding: {p}. Expected a number between 0 and 20."
+                    )));
+                }
+                Some(p) => printer.padding(p),
                 None => printer,
             };
+
             Ok(Self { printer })
         }
 

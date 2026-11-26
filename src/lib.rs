@@ -13,6 +13,7 @@ pyo3::create_exception!(chronosapien, InvalidUnitError, ChronosapienError);
 
 #[pymodule]
 mod chronosapien {
+    use std::cmp::Ordering;
     use std::hash::{Hash, Hasher};
 
     use jiff::civil::{Date, DateTime};
@@ -24,7 +25,7 @@ mod chronosapien {
     use pyo3::exceptions::{PyOverflowError, PyTypeError, PyValueError};
     use pyo3::prelude::*;
     use pyo3::sync::PyOnceLock;
-    use pyo3::types::{PyDate, PyDateTime, PyType, PyTzInfoAccess};
+    use pyo3::types::{PyDate, PyDateTime, PyDict, PyType, PyTzInfoAccess};
 
     #[pymodule_export]
     use super::{
@@ -34,7 +35,7 @@ mod chronosapien {
 
     #[pymodule_export]
     #[allow(non_upper_case_globals)]
-    const __all__: (&str, &str, &str, &str, &str, &str, &str, &str, &str) = (
+    const __all__: (&str, &str, &str, &str, &str, &str, &str, &str, &str, &str) = (
         "CalendarUnitError",
         "ChronosapienError",
         "Duration",
@@ -42,9 +43,46 @@ mod chronosapien {
         "DurationFormatter",
         "DurationRoundError",
         "InvalidUnitError",
+        "Ordering",
         "SpanParseError",
         "to_timedelta",
     );
+
+    #[pymodule_init]
+    fn init(module: &Bound<'_, PyModule>) -> PyResult<()> {
+        module.setattr("Ordering", &ordering_enum(module.py())?.class)
+    }
+
+    struct OrderingEnum {
+        class: Py<PyType>,
+        less: Py<PyAny>,
+        equal: Py<PyAny>,
+        greater: Py<PyAny>,
+    }
+
+    fn ordering_enum(py: Python<'_>) -> PyResult<&'static OrderingEnum> {
+        static ORDERING_ENUM: PyOnceLock<OrderingEnum> = PyOnceLock::new();
+        ORDERING_ENUM.get_or_try_init(py, || {
+            let members = (
+                ("LESS", Ordering::Less as i8),
+                ("EQUAL", Ordering::Equal as i8),
+                ("GREATER", Ordering::Greater as i8),
+            );
+            let kwargs = PyDict::new(py);
+            kwargs.set_item("module", "chronosapien")?;
+            let ordering = py
+                .import("enum")?
+                .getattr("IntEnum")?
+                .call(("Ordering", members), Some(&kwargs))?
+                .cast_into::<PyType>()?;
+            Ok(OrderingEnum {
+                less: ordering.getattr("LESS")?.unbind(),
+                equal: ordering.getattr("EQUAL")?.unbind(),
+                greater: ordering.getattr("GREATER")?.unbind(),
+                class: ordering.unbind(),
+            })
+        })
+    }
 
     // With no reference, Jiff's marker preserves 24-hour days and seven-day
     // weeks. Temporal's Duration.total likewise defaults to 24-hour days.
@@ -78,8 +116,24 @@ mod chronosapien {
         }
     }
 
+    // This block only holds methods
+    // the Python side won't see
     impl Duration {
-        fn span_arithmetic(
+        // Like Temporal's Duration.compare, compare unanchored days as 24 hours.
+        // Jiff's marker also treats a week in either span as seven days.
+        // https://docs.rs/jiff/latest/jiff/struct.Span.html#method.compare
+        // https://tc39.es/proposal-temporal/#sec-temporal.duration.compare
+        fn _compare(
+            &self,
+            other: &Self,
+            relative_to: Option<&Bound<'_, PyDate>>,
+        ) -> PyResult<Ordering> {
+            with_span_reference(relative_to, |reference| {
+                self.span.compare((other.span, reference))
+            })
+        }
+
+        fn _arithmetic(
             &self,
             other: &Self,
             relative_to: Option<&Bound<'_, PyDate>>,
@@ -255,31 +309,40 @@ mod chronosapien {
             Ok(Self { span })
         }
 
-        // Like Temporal's Duration.compare, compare unanchored days as 24 hours.
-        // Jiff's marker also treats a week in either span as seven days.
-        // https://docs.rs/jiff/latest/jiff/struct.Span.html#method.compare
-        // https://tc39.es/proposal-temporal/#sec-temporal.duration.compare
+        #[pyo3(signature = (other, /, *, relative_to=None))]
+        fn compare(
+            &self,
+            py: Python<'_>,
+            other: &Self,
+            relative_to: Option<&Bound<'_, PyDate>>,
+        ) -> PyResult<Py<PyAny>> {
+            let order = self._compare(other, relative_to)?;
+            let ordering = ordering_enum(py)?;
+            let member = match order {
+                Ordering::Less => &ordering.less,
+                Ordering::Equal => &ordering.equal,
+                Ordering::Greater => &ordering.greater,
+            };
+            Ok(member.clone_ref(py))
+        }
+
         #[pyo3(signature = (other, /, *, relative_to=None))]
         fn equivalent_to(
             &self,
             other: &Self,
             relative_to: Option<&Bound<'_, PyDate>>,
         ) -> PyResult<bool> {
-            with_span_reference(relative_to, |reference| {
-                self.span
-                    .compare((other.span, reference))
-                    .map(std::cmp::Ordering::is_eq)
-            })
+            Ok(self._compare(other, relative_to)?.is_eq())
         }
 
         #[pyo3(signature = (other, /, *, relative_to=None))]
         fn plus(&self, other: &Self, relative_to: Option<&Bound<'_, PyDate>>) -> PyResult<Self> {
-            self.span_arithmetic(other, relative_to, |options| self.span.checked_add(options))
+            self._arithmetic(other, relative_to, |options| self.span.checked_add(options))
         }
 
         #[pyo3(signature = (other, /, *, relative_to=None))]
         fn minus(&self, other: &Self, relative_to: Option<&Bound<'_, PyDate>>) -> PyResult<Self> {
-            self.span_arithmetic(other, relative_to, |options| self.span.checked_sub(options))
+            self._arithmetic(other, relative_to, |options| self.span.checked_sub(options))
         }
 
         fn add_to<'py>(&self, start: &Bound<'py, PyDateTime>) -> PyResult<Bound<'py, PyDateTime>> {

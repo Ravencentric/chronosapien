@@ -1,6 +1,7 @@
 """Parse fixed durations and calendar spans using Jiff."""
 
 from datetime import date, datetime, timedelta
+from enum import IntEnum
 from typing import Final, Literal, TypeAlias, final
 
 __all__: Final = (
@@ -11,6 +12,7 @@ __all__: Final = (
     "DurationFormatter",
     "DurationRoundError",
     "InvalidUnitError",
+    "Ordering",
     "SpanParseError",
     "to_timedelta",
 )
@@ -45,6 +47,13 @@ class InvalidUnitError(ChronosapienError):
 
 class SpanParseError(ChronosapienError):
     """Invalid span text or a component outside its supported range."""
+
+class Ordering(IntEnum):
+    """Order of two durations by elapsed time."""
+
+    LESS = -1
+    EQUAL = 0
+    GREATER = 1
 
 def to_timedelta(text: str, /, *, relative_to: date | None = None) -> timedelta:
     """
@@ -369,6 +378,48 @@ class Duration:
         assert Duration("2h 30m").round(
             largest="hour", smallest="hour", mode="half_even"
         ) == Duration("2h")
+        ```
+        """
+
+    def compare(
+        self, other: Duration, /, *, relative_to: date | None = None
+    ) -> Ordering:
+        """
+        Compare this span's elapsed time with `other` at nanosecond precision.
+
+        Return `Ordering.LESS` (-1), `Ordering.EQUAL` (0), or
+        `Ordering.GREATER` (1) according to the signed elapsed times.
+
+        Supply `relative_to` as the starting point for both spans when either has
+        nonzero months or years. Without a reference, a day is 24 hours and a week
+        is seven days. The reference can be a `date` or a `datetime`. A `datetime`
+        may be naive, have a fixed offset from `datetime.timezone`, or use a named
+        `zoneinfo.ZoneInfo`. Named zones account for offset transitions.
+        Fixed offsets are truncated toward zero to whole seconds.
+
+        Raises
+        ------
+        TypeError
+            If `other` is not a `Duration` or the reference has an unsupported
+            type or `tzinfo`.
+        CalendarUnitError
+            If either span has nonzero months or years and no reference was supplied.
+        ValueError
+            If the `ZoneInfo` key is missing or unrecognized, or the reference or
+            either result is out of range.
+
+        Examples
+        --------
+        ```python
+        from datetime import date
+
+        from chronosapien import Duration, Ordering
+
+        assert Duration("1h").compare(Duration("60m")) is Ordering.EQUAL
+
+        month, days = Duration("1mo"), Duration("30d")
+        assert month.compare(days, relative_to=date(2026, 1, 1)) is Ordering.GREATER
+        assert month.compare(days, relative_to=date(2026, 2, 1)) is Ordering.LESS
         ```
         """
 

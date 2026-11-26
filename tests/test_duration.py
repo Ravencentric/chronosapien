@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime, timedelta, timezone, tzinfo
+from enum import IntEnum
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -12,6 +13,7 @@ from chronosapien import (
     DurationFormatter,
     DurationRoundError,
     InvalidUnitError,
+    Ordering,
     to_timedelta,
 )
 
@@ -253,6 +255,16 @@ def test_equivalence_uses_nanosecond_precision(relative_to: date | None) -> None
     assert not Duration("1ns").equivalent_to(Duration("2ns"), relative_to=relative_to)
 
 
+def test_compare_returns_int_enum_members() -> None:
+    assert issubclass(Ordering, IntEnum)
+    assert [member.value for member in Ordering] == [-1, 0, 1]
+
+    hour = Duration("1h")
+    assert hour.compare(Duration("1h 1ns")) is Ordering.LESS
+    assert hour.compare(Duration("60m")) is Ordering.EQUAL
+    assert hour.compare(Duration("59m")) is Ordering.GREATER
+
+
 @pytest.mark.parametrize(("text", "hours"), [("1d", 24), ("1w", 168)])
 def test_days_and_weeks_are_fixed_without_a_reference(text: str, hours: int) -> None:
     span = Duration(text)
@@ -275,6 +287,9 @@ def test_months_and_years_require_a_reference(text: str) -> None:
     with pytest.raises(CalendarUnitError) as error:
         _ = hour.equivalent_to(span)
     assert str(error.value) == expected
+
+    with pytest.raises(CalendarUnitError, match="relative_to is required"):
+        _ = hour.compare(span)
 
     with pytest.raises(CalendarUnitError) as error:
         _ = span.total("hour")
@@ -622,6 +637,10 @@ def test_spring_dst_transition_makes_calendar_day_23_hours() -> None:
     assert calendar_day.to_timedelta(relative_to=midnight_before) == timedelta(hours=23)
     assert fixed_day.add_to(midnight_before) == datetime(2024, 3, 11, 1, tzinfo=zone)
     assert calendar_day.equivalent_to(Duration("23h"), relative_to=midnight_before)
+    assert (
+        calendar_day.compare(Duration("24h"), relative_to=midnight_before)
+        is Ordering.LESS
+    )
     assert calendar_day.minus(Duration("23h"), relative_to=midnight_before).is_zero()
     extended_day = calendar_day.plus(Duration("1h"), relative_to=midnight_before)
     assert extended_day.add_to(midnight_before) == datetime(2024, 3, 11, 1, tzinfo=zone)

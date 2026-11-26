@@ -17,6 +17,8 @@ __all__: Final = (
     "to_timedelta",
 )
 
+def __dir__() -> list[str]: ...
+
 SpanUnit: TypeAlias = Literal[
     "year",
     "month",

@@ -1,6 +1,6 @@
 [project]
 name = "chronosapien"
-version = "0.2.0"
+version = "0.2.1"
 description = "Parse human-readable durations into Python timedelta values and calendar spans."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -56,7 +56,7 @@ build = ["cp311-*", "cp315t-*"]
 archs = "native"
 build-frontend = "build[uv]"
 test-groups = ["test"]
-test-sources = ["chronosapien.pyi", "pyproject.toml", "tests"]
+test-sources = ["python/chronosapien/__init__.pyi", "pyproject.toml", "tests"]
 test-command = "pytest"
 
 [tool.cibuildwheel.linux]
@@ -75,12 +75,13 @@ audit-command = ""
 [tool.maturin]
 editable-profile = "dev"
 locked = true
+python-source = "python"
 
 [tool.pyrefly]
 preset = "all"
 python-platform = "all"
 project-includes = [
-  "chronosapien.pyi",
+  "python/chronosapien/__init__.pyi",
   "tests/**/*.py",
 ]
 
@@ -90,15 +91,21 @@ filterwarnings = ["error"]
 log_cli_level = "INFO"
 pythonpath = ["tests"]
 strict = true
-testpaths = ["tests", "chronosapien.pyi"]
+testpaths = ["tests", "python/chronosapien/__init__.pyi"]
+
+[tool.ruff]
+src = ["python"]
 
 [tool.ruff.lint.per-file-ignores]
-"chronosapien.pyi" = ["PYI021", "PYI029"]
+"python/chronosapien/__init__.pyi" = ["PYI021", "PYI029"]
 
 [tool.uv]
 cache-keys = [
   { file = "Cargo.toml" },
   { file = "pyproject.toml" },
+  { file = "python/**/*.py" },
+  { file = "python/**/*.pyi" },
+  { file = "python/**/py.typed" },
   { file = "src/**/*.rs" },
 ]
 exclude-newer = "3 days"

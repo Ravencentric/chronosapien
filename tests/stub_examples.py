@@ -7,7 +7,7 @@ from textwrap import dedent
 
 import pytest
 
-STUBFILE = Path(__file__).resolve().parents[1] / "chronosapien.pyi"
+STUBFILE = Path(__file__).resolve().parents[1] / "python/chronosapien/__init__.pyi"
 PYBLOCK = re.compile(
     r"^[ \t]*```python[ \t]*\n(.*?)^[ \t]*```[ \t]*$", re.MULTILINE | re.DOTALL
 )
@@ -83,7 +83,7 @@ class StubFile(pytest.File):
     def collect(self) -> Iterator[pytest.Item]:
         source = self.path.read_text(encoding="utf-8")
         tree = ast.parse(source, filename=str(self.path))
-        examples = list(find_examples(tree, source, self.path.stem))
+        examples = list(find_examples(tree, source, self.path.parent.name))
         if len(examples) == 0:
             raise self.CollectError(
                 f"No Python docstring blocks found in {self.path.name}"

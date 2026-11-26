@@ -1,4 +1,4 @@
 ::: chronosapien.DurationFormatter
     options:
       heading_level: 1
-      filters: ["!^_(?!_new__$)"]
+      filters: ["!^_(?!_(?:new|copy|deepcopy)__$)"]

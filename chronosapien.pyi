@@ -627,6 +627,20 @@ class Duration:
         ```
         """
 
+    def __bool__(self) -> bool:
+        """Return whether any stored unit is nonzero.
+
+        Examples
+        --------
+        ```python
+        from chronosapien import Duration
+
+        assert not bool(Duration("0s"))
+        assert bool(Duration("1ns"))
+        assert bool(Duration("-1mo"))
+        ```
+        """
+
     def is_positive(self) -> bool:
         """Return whether the span is strictly positive.
 
@@ -718,6 +732,36 @@ class Duration:
         from chronosapien import Duration
 
         assert repr(Duration("P1M2D")) == "Duration('1mo 2d')"
+        ```
+        """
+
+    def __copy__(self) -> Duration:
+        """Return this immutable duration from `copy.copy()`.
+
+        Examples
+        --------
+        ```python
+        from copy import copy
+
+        from chronosapien import Duration
+
+        span = Duration("1mo 2d")
+        assert copy(span) is span
+        ```
+        """
+
+    def __deepcopy__(self, memo: dict[int, object], /) -> Duration:
+        """Return this immutable duration from `copy.deepcopy()`.
+
+        Examples
+        --------
+        ```python
+        from copy import deepcopy
+
+        from chronosapien import Duration
+
+        span = Duration("1mo 2d")
+        assert deepcopy([span])[0] is span
         ```
         """
 
@@ -922,3 +966,33 @@ class DurationFormatter:
 
     def format(self, duration: Duration, /) -> str:
         """Format a duration using the stored settings."""
+
+    def __copy__(self) -> DurationFormatter:
+        """Return this immutable formatter from `copy.copy()`.
+
+        Examples
+        --------
+        ```python
+        from copy import copy
+
+        from chronosapien import DurationFormatter
+
+        formatter = DurationFormatter(hhmmss=True)
+        assert copy(formatter) is formatter
+        ```
+        """
+
+    def __deepcopy__(self, memo: dict[int, object], /) -> DurationFormatter:
+        """Return this immutable formatter from `copy.deepcopy()`.
+
+        Examples
+        --------
+        ```python
+        from copy import deepcopy
+
+        from chronosapien import DurationFormatter
+
+        formatter = DurationFormatter(hhmmss=True)
+        assert deepcopy([formatter])[0] is formatter
+        ```
+        """

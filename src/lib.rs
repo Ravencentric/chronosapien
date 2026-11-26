@@ -376,6 +376,10 @@ mod chronosapien {
             self.span.is_zero()
         }
 
+        fn __bool__(&self) -> bool {
+            !self.is_zero()
+        }
+
         fn is_positive(&self) -> bool {
             self.span.is_positive()
         }
@@ -411,6 +415,15 @@ mod chronosapien {
 
         fn __repr__(&self) -> String {
             format!("Duration('{}')", self.span.to_friendly())
+        }
+
+        fn __copy__(slf: &Bound<'_, Self>) -> Py<Self> {
+            slf.clone().unbind()
+        }
+
+        #[pyo3(signature = (_memo, /))]
+        fn __deepcopy__(slf: &Bound<'_, Self>, _memo: &Bound<'_, PyDict>) -> Py<Self> {
+            slf.clone().unbind()
         }
 
         #[pyo3(signature = (
@@ -613,6 +626,15 @@ mod chronosapien {
         #[pyo3(signature = (duration, /))]
         fn format(&self, duration: &Duration) -> String {
             self.printer.span_to_string(&duration.span)
+        }
+
+        fn __copy__(slf: &Bound<'_, Self>) -> Py<Self> {
+            slf.clone().unbind()
+        }
+
+        #[pyo3(signature = (_memo, /))]
+        fn __deepcopy__(slf: &Bound<'_, Self>, _memo: &Bound<'_, PyDict>) -> Py<Self> {
+            slf.clone().unbind()
         }
     }
 

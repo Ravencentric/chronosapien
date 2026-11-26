@@ -49,7 +49,9 @@ class SpanParseError(ChronosapienError):
     """Invalid span text or a component outside its supported range."""
 
 class Ordering(IntEnum):
-    """Order of two durations by elapsed time."""
+    """
+    Named results for comparing durations by elapsed time.
+    """
 
     LESS = -1
     EQUAL = 0
@@ -416,6 +418,7 @@ class Duration:
         from chronosapien import Duration, Ordering
 
         assert Duration("1h").compare(Duration("60m")) is Ordering.EQUAL
+        assert Duration("30m").compare(Duration("1h")) == -1 == Ordering.LESS
 
         month, days = Duration("1mo"), Duration("30d")
         assert month.compare(days, relative_to=date(2026, 1, 1)) is Ordering.GREATER
